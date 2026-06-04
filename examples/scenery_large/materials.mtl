@@ -1,0 +1,5 @@
+# Recolourable stone for the gate.
+newmtl Remap1
+Kd 0.55 0.55 0.55
+Ks 0.3 0.3 0.3
+Ns 40.0

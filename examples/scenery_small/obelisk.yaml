@@ -1,0 +1,21 @@
+id: openrct2vg.scenery_small.obelisk
+name: Stone Obelisk
+authors: [OpenRCT2-VehicleGenerator]
+version: "1.0"
+
+output_directory: .
+
+meshes:
+  - examples/scenery_small/obelisk.obj
+
+model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+price: 2.0
+removal_price: 1.5
+cursor: CURSOR_STATUE_DOWN
+height: 64
+shape: "4/4"
+
+is_rotatable: true
+has_primary_colour: true

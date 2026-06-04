@@ -1,0 +1,6 @@
+# Materials for the example obelisk. Names drive mesh.py's classification:
+# "Remap1" -> recolourable primary-colour region.
+newmtl Remap1
+Kd 0.55 0.55 0.55
+Ks 0.3 0.3 0.3
+Ns 40.0

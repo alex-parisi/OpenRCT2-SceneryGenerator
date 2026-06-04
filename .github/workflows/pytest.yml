@@ -1,0 +1,33 @@
+name: pytest
+
+# Python unit tests. The renderer is now an external PyPI dependency
+# (openrct2-x7-renderer, prebuilt Embree-vendored wheels), so there's no native
+# build here -- `uv sync` just pulls the wheel.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # uv.lock is gitignored in this repo, so key the cache off pyproject.toml
+      # instead of the default **/uv.lock glob.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install project + dev deps
+        run: uv sync --group dev
+
+      - name: pytest
+        run: uv run --no-sync pytest

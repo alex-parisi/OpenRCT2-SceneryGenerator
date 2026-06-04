@@ -1,0 +1,28 @@
+# Recolourable stone/metal for the wall frame. Remap2 = the *secondary* colour,
+# so the frame recolours independently of the glass (the engine tints glass with
+# the *primary* colour -- Paint.Wall.cpp:148, WithTransparency(GetPrimary())).
+newmtl Remap2
+Kd 0.55 0.55 0.55
+Ks 0.3 0.3 0.3
+Ns 40.0
+
+# Glass panes. Any material named *Glass* is split into the translucent overlay
+# block by the wall renderer (see CLAUDE.md "Walls"). A tight, bright specular
+# highlight sells the glassy look; the diffuse tint shows through the overlay.
+newmtl Glass
+Kd 0.40 0.62 0.78
+Ks 0.9 0.9 0.9
+Ns 120.0
+
+# Double-sided wall infills. *Front* faces render only into the front block,
+# *Back* faces only into the rear block (see CLAUDE.md "Walls"); untagged
+# materials (e.g. the Remap2 frame) are shared and appear on both sides.
+newmtl FrontPanel
+Kd 0.75 0.20 0.20
+Ks 0.2 0.2 0.2
+Ns 30.0
+
+newmtl BackPanel
+Kd 0.20 0.30 0.75
+Ks 0.2 0.2 0.2
+Ns 30.0

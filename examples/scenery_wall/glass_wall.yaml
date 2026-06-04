@@ -1,0 +1,21 @@
+object_type: scenery_wall
+id: openrct2vg.scenery_wall.glass_wall
+name: Glass Wall
+authors: [OpenRCT2-VehicleGenerator]
+version: "1.0"
+
+output_directory: .
+
+meshes:
+  - examples/scenery_wall/glass_wall.obj
+
+model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+price: 4.0
+cursor: CURSOR_FENCE_DOWN
+height: 2
+has_primary_colour: true     # tints the glass (engine: WithTransparency(primary))
+has_secondary_colour: true   # recolours the Remap2 frame, independent of the glass
+is_allowed_on_slope: true
+has_glass: true              # *Glass* faces -> translucent overlay (12 sprites)

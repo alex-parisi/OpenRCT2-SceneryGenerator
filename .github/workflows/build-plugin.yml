@@ -1,0 +1,100 @@
+name: build-plugin
+
+# Package the scenery_addon Blender add-on into per-platform extension zips. The
+# renderer is the external PyPI package openrct2-x7-renderer (prebuilt
+# Embree-vendored wheels), so there's no native build here: we build this repo's
+# pure-Python front-end wheel, fetch the renderer + numpy/pillow/pyyaml from PyPI,
+# bundle them, and let Blender zip it. Triggered manually or on a tag.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+env:
+  # Blender used only to PACKAGE the extension (it just zips the wheels; any
+  # 4.2+ works). Confirmed present at download.blender.org.
+  BLENDER_SERIES: "4.5"
+  BLENDER_VERSION: "4.5.4"
+
+jobs:
+  package-extension:
+    name: package-extension
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # Pin the project version from the tag (or 0.0.0 for manual runs) so the
+      # front-end wheel + manifest carry the release version.
+      - name: Pin version from tag
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0"
+          fi
+          python scripts/ci/set_version.py "$VERSION"
+
+      # `build` makes the wheel; numpy/pillow/pyyaml are imported by
+      # collect_wheels.py to pin the bundled dep versions.
+      - name: Install tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install build "numpy>=1.26" "pillow>=10.0" "pyyaml>=6.0"
+
+      # This repo's pure-Python front-end wheel (py3-none-any, all platforms).
+      - name: Build front-end wheel
+        run: python -m build --wheel --outdir dist
+
+      # Stage the add-on's wheels/: drop in the front-end wheel, then let
+      # collect_wheels.py download the renderer + deps from PyPI for every target
+      # and regenerate the manifest's wheel list.
+      - name: Bundle wheels + regenerate manifest
+        run: |
+          mkdir -p scenery_addon/wheels
+          cp dist/openrct2_scenerygenerator-*.whl scenery_addon/wheels/
+          python scripts/collect_wheels.py
+
+      - name: Install Blender runtime libs
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libxrender1 libxxf86vm1 \
+            libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1
+
+      - name: Install Blender (for packaging only)
+        run: |
+          base="https://download.blender.org/release/Blender${BLENDER_SERIES}"
+          tarball="blender-${BLENDER_VERSION}-linux-x64.tar.xz"
+          curl -fL -o /tmp/blender.tar.xz "$base/$tarball"
+          sudo mkdir -p /opt/blender
+          sudo tar -xJf /tmp/blender.tar.xz -C /opt/blender --strip-components=1
+          echo "/opt/blender" >> "$GITHUB_PATH"
+
+      - name: Build per-platform extensions
+        run: |
+          xvfb-run -a blender --version
+          mkdir -p out
+          xvfb-run -a blender --command extension build \
+            --source-dir scenery_addon --split-platforms --output-dir out
+          ls -lh out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blender-extension
+          path: out/*.zip
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/*.zip \
+            --title "$GITHUB_REF_NAME" --generate-notes \
+          || gh release upload "$GITHUB_REF_NAME" out/*.zip --clobber

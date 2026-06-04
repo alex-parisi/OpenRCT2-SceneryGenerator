@@ -1,0 +1,34 @@
+id: openrct2vg.scenery_small.spinner
+name: Spinning Obelisk
+authors: [OpenRCT2-VehicleGenerator]
+version: "1.0"
+
+output_directory: .
+
+meshes:
+  - examples/scenery_small/obelisk.obj
+
+# Animated small scenery (generic frameOffsets path). Each entry in
+# `animation.frames` is one pose: a full `model` placement list. `frame_offsets`
+# maps the engine's logical frame counter to a pose group, and the engine cycles
+# frames as `(tick >> delay) & mask`. With 4 poses + a forward loop, the obelisk
+# spins a quarter turn per frame.
+animation:
+  delay: 2          # higher = slower
+  mask: 3           # 4-step cycle (must be a power of two minus one)
+  num_frames: 4
+  frame_offsets: [0, 1, 2, 3]
+  frames:
+    - [{mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}]
+    - [{mesh_index: 0, position: [0, 0, 0], orientation: [90, 0, 0]}]
+    - [{mesh_index: 0, position: [0, 0, 0], orientation: [180, 0, 0]}]
+    - [{mesh_index: 0, position: [0, 0, 0], orientation: [270, 0, 0]}]
+
+price: 2.0
+removal_price: 1.5
+cursor: CURSOR_STATUE_DOWN
+height: 64
+shape: "4/4"
+
+is_rotatable: true
+has_primary_colour: true

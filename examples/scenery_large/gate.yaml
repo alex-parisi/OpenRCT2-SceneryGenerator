@@ -1,0 +1,23 @@
+object_type: scenery_large
+id: openrct2vg.scenery_large.gate
+name: Stone Gate
+authors: [OpenRCT2-VehicleGenerator]
+version: "1.0"
+
+output_directory: .
+
+meshes:
+  - examples/scenery_large/gate.obj
+
+model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+price: 8.0
+removal_price: 6.0
+cursor: CURSOR_STATUE_DOWN
+has_primary_colour: true
+
+# Two-tile footprint: tile (0,0) anchor + tile (1,0).
+tiles:
+  - {x: 0, y: 0, z: 0, clearance: 40}
+  - {x: 1, y: 0, z: 0, clearance: 40}

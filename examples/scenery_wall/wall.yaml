@@ -1,0 +1,19 @@
+object_type: scenery_wall
+id: openrct2vg.scenery_wall.test_wall
+name: Test Wall
+authors: [OpenRCT2-VehicleGenerator]
+version: "1.0"
+
+output_directory: .
+
+meshes:
+  - examples/scenery_wall/wall.obj
+
+model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+price: 3.0
+cursor: CURSOR_FENCE_DOWN
+height: 2
+has_primary_colour: true
+is_allowed_on_slope: true

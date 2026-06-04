@@ -1,0 +1,20 @@
+object_type: scenery_wall
+id: openrct2vg.scenery_wall.double_wall
+name: Double-Sided Wall
+authors: [OpenRCT2-VehicleGenerator]
+version: "1.0"
+
+output_directory: .
+
+meshes:
+  - examples/scenery_wall/double_wall.obj
+
+model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+price: 4.0
+cursor: CURSOR_FENCE_DOWN
+height: 2
+has_secondary_colour: true   # recolours the shared Remap2 frame
+is_allowed_on_slope: true
+is_double_sided: true         # *Front* faces -> block 0-5, *Back* faces -> 6-11
