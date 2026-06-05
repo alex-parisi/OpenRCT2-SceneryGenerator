@@ -15,6 +15,7 @@ import zipfile
 import numpy as np
 import pytest
 from openrct2_scenery_generator.exporter import (
+    combine_indexed_images,
     export_large_scenery,
     export_large_scenery_test,
     export_large_scenery_to,
@@ -269,6 +270,44 @@ def test_export_small_scenery_test_animated_writes_base_and_pose_pngs(tmp_path):
             assert (test_dir / f"pose{g}_{d}.png").exists()
 
 
+def test_export_small_scenery_test_writes_combined_preview(tmp_path):
+    # The combined preview tiles the four rotations into a 2x2 grid (2x2 with
+    # the 1x1 fake renders).
+    from openrct2_x7_renderer.image import read_png
+
+    obj = _small(tmp_path)
+    test_dir = tmp_path / "test"
+    export_small_scenery_test(obj, FakeContext(), test_dir)
+    img = read_png(test_dir / "preview_combined.png")
+    assert (img.width, img.height) == (2, 2)
+
+
+def test_export_large_scenery_test_writes_combined_preview(tmp_path):
+    from openrct2_x7_renderer.image import read_png
+
+    obj = _large(tmp_path, ntiles=2)
+    test_dir = tmp_path / "test"
+    export_large_scenery_test(obj, FakeContext(), test_dir)
+    img = read_png(test_dir / "preview_combined.png")
+    assert (img.width, img.height) == (2, 2)
+
+
+def test_combine_indexed_images_grid_layout():
+    imgs = [
+        IndexedImage(1, 1, 0, 0, np.full((1, 1), v, dtype=np.uint8))
+        for v in (10, 20, 30, 40)
+    ]
+    out = combine_indexed_images(imgs, columns=2)
+    assert (out.width, out.height) == (2, 2)
+    assert out.pixels.tolist() == [[10, 20], [30, 40]]
+
+
+def test_combine_indexed_images_single_image_no_blank_cell():
+    one = IndexedImage(1, 1, 0, 0, np.full((1, 1), 7, dtype=np.uint8))
+    out = combine_indexed_images([one], columns=2)
+    assert (out.width, out.height) == (1, 1)
+
+
 # --------------------------------------------------------------------------
 # Large scenery
 # --------------------------------------------------------------------------
@@ -342,3 +381,15 @@ def test_export_wall_scenery_test_writes_a_png_per_sprite(tmp_path):
     # Flat wall -> 2 sprites -> wall_0.png, wall_1.png.
     assert (test_dir / "wall_0.png").exists()
     assert (test_dir / "wall_1.png").exists()
+
+
+def test_export_wall_scenery_test_writes_combined_preview(tmp_path):
+    # The contact sheet tiles every wall sprite; a flat wall's 2 sprites give a
+    # 2-wide, 1-tall grid (2x1 with the 1x1 fake renders).
+    from openrct2_x7_renderer.image import read_png
+
+    obj = _wall(tmp_path)
+    test_dir = tmp_path / "test"
+    export_wall_scenery_test(obj, FakeContext(), test_dir)
+    img = read_png(test_dir / "preview_combined.png")
+    assert (img.width, img.height) == (2, 1)

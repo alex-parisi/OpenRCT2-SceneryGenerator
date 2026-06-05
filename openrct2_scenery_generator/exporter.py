@@ -14,6 +14,7 @@ from openrct2_x7_renderer.geometry import combine_model_world, rotate_x, rotate_
 from openrct2_x7_renderer.image import write_png
 from openrct2_x7_renderer.images_dat import write_images_dat
 from openrct2_x7_renderer.ray_trace import VIEWS, Context, SceneBuilder
+from openrct2_x7_renderer.types import IndexedImage
 
 from .constants import COORDS_PER_TILE, SCROLLING_MODE_NONE
 from .sprite_renderer import (
@@ -42,6 +43,39 @@ def _add_model_to_scene(
         matrix = rotate_y(rx) @ rotate_z(ry) @ rotate_x(rz)
         translation = mf.position.astype(np.float64)
         scene.add_model(obj.meshes[mf.mesh_index], matrix, translation, 0)
+
+
+def combine_indexed_images(images: list[IndexedImage], columns: int = 2) -> IndexedImage:
+    """Tile IndexedImages into a single grid image, aligned by draw offset.
+
+    Each cell spans the union of every image's draw-offset bounding box, so a
+    shared sprite anchor lands at the same spot in every cell and the rotated
+    views line up. Cells fill left-to-right, top-to-bottom over a transparent
+    (palette index 0) background; ``columns`` is capped at the image count so a
+    single image doesn't leave a blank cell. Used to show all four rotated
+    preview directions in one image.
+    """
+    if not images:
+        return IndexedImage.blank(1, 1)
+    columns = max(1, min(columns, len(images)))
+    left = min(im.x_offset for im in images)
+    top = min(im.y_offset for im in images)
+    cell_w = max(im.x_offset + im.width for im in images) - left
+    cell_h = max(im.y_offset + im.height for im in images) - top
+    rows = math.ceil(len(images) / columns)
+    canvas = np.zeros((rows * cell_h, columns * cell_w), dtype=np.uint8)
+    for idx, im in enumerate(images):
+        row, col = divmod(idx, columns)
+        x = col * cell_w + (im.x_offset - left)
+        y = row * cell_h + (im.y_offset - top)
+        canvas[y : y + im.height, x : x + im.width] = im.pixels
+    return IndexedImage(
+        width=canvas.shape[1],
+        height=canvas.shape[0],
+        x_offset=0,
+        y_offset=0,
+        pixels=canvas,
+    )
 
 
 def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
@@ -183,13 +217,19 @@ def export_small_scenery_test(
         for g in range(obj.num_pose_groups):
             for d in range(4):
                 write_png(images[4 + g * 4 + d], test_dir / f"pose{g}_{d}.png")
+        # Combine the four base-pose directions into a single preview.
+        write_png(combine_indexed_images(images[:4]), test_dir / "preview_combined.png")
         return
+    rotations: list[IndexedImage] = []
     with context.begin_render() as scene:
         _add_model_to_scene(obj, scene)
         with scene.finalize() as ready:
             for i in range(obj.num_rotations):
                 img = ready.render_view(VIEWS[i])
                 write_png(img, test_dir / f"scenery_{i}.png")
+                rotations.append(img)
+    # Combine every rendered rotation (1 for non-rotatable, 4 otherwise).
+    write_png(combine_indexed_images(rotations), test_dir / "preview_combined.png")
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +349,8 @@ def export_large_scenery_test(
     for seq in range(obj.num_tiles):
         for d in range(4):
             write_png(images[4 + seq * 4 + d], test_dir / f"tile{seq}_{d}.png")
+    # Combine the four whole-footprint preview directions into one image.
+    write_png(combine_indexed_images(images[:4]), test_dir / "preview_combined.png")
 
 
 # ---------------------------------------------------------------------------
@@ -428,3 +470,6 @@ def export_wall_scenery_test(
     )
     for i, img in enumerate(images):
         write_png(img, test_dir / f"wall_{i}.png")
+    # Walls aren't 4-way rotated; the contact sheet shows every wall sprite
+    # (flat plus any slope / glass / double-sided variants) in one image.
+    write_png(combine_indexed_images(images), test_dir / "preview_combined.png")

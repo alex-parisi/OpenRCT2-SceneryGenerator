@@ -210,16 +210,17 @@ class VGS_OT_test_render(_RenderModalBase):
         ctx = make_context(self._lights, obj.units_per_tile, True)
         if kind == "large":
             export_large_scenery_test(obj, ctx, self._tmp)
-            self._png = os.path.join(self._tmp, "preview_0.png")
+            # A 2x2 grid of the four whole-footprint preview directions.
+            self._png = os.path.join(self._tmp, "preview_combined.png")
         elif kind == "wall":
             export_wall_scenery_test(obj, ctx, self._tmp)
-            self._png = os.path.join(self._tmp, "wall_0.png")
+            # A contact sheet of every wall sprite (flat plus any variants).
+            self._png = os.path.join(self._tmp, "preview_combined.png")
         else:
             export_small_scenery_test(obj, ctx, self._tmp)
-            # Animated objects emit pose{g}_{d}.png; the static path emits
-            # scenery_{i}.png. Preview whichever the first frame produced.
-            name = "pose0_0.png" if obj.is_animated else "scenery_0.png"
-            self._png = os.path.join(self._tmp, name)
+            # A 2x2 grid of the four rotated directions (just the one sprite for
+            # non-rotatable scenery).
+            self._png = os.path.join(self._tmp, "preview_combined.png")
 
     def _on_success(self, context):
         if not self._png or not os.path.exists(self._png):
