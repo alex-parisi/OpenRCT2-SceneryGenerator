@@ -84,12 +84,46 @@ def _build_scenery_from_scene(context):
     return "small", build_small_scenery(config, meshes, preview)
 
 
-class VGS_OT_test_render(Operator):
-    bl_idname = "vgs.test_render"
-    bl_label = "Test Render"
-    bl_description = "Render the scenery quickly and show it in the Image Editor"
+class _RenderModalBase(Operator):
+    """Shared scaffolding for operators that run a blocking render off the main
+    thread while showing a status-bar spinner + window-manager progress bar.
+
+    The build phase (`_build_scenery_from_scene`, which reads bpy data and may
+    run the animated-pose sampler) stays on the main thread — it carries its own
+    progress bar from `scene_to_scenery` — and only the renderer-bound work is
+    threaded. The progress bar here is *indeterminate* (a cycling fill): the
+    renderer is an opaque external package with no per-sprite callback, so there
+    is no real fraction to report.
+
+    Subclasses provide:
+      ``_status_verb``                  label shown in the status bar.
+      ``_prepare(context, kind, obj)``  stash per-run state on ``self`` (main
+                                        thread); context-dependent values (lights,
+                                        paths) must be resolved here, not in the
+                                        thread.
+      ``_render(kind, obj)``            the blocking work; runs in the worker
+                                        thread, so it must touch only ``self`` and
+                                        never ``context``/bpy data.
+      ``_on_success(context)``          post-render UI on the main thread; returns
+                                        an operator result set.
+    """
+
+    _status_verb = "Working"
+
+    def _prepare(self, context, kind, obj) -> None:
+        self._lights = _lights_from_scene(context)
+
+    def _render(self, kind, obj) -> None:  # pragma: no cover - subclass hook
+        raise NotImplementedError
+
+    def _on_success(self, context):  # pragma: no cover - subclass hook
+        raise NotImplementedError
 
     def execute(self, context):
+        # The build phase (bpy read + animated-pose sampling) blocks the main
+        # thread before the modal spinner starts, so its cost is otherwise
+        # invisible. Time it and surface it in the status line / final report.
+        build_start = time.monotonic()
         try:
             kind, obj = _build_scenery_from_scene(context)
         except scene_to_scenery.SceneError as e:
@@ -98,82 +132,17 @@ class VGS_OT_test_render(Operator):
         except Exception as e:
             self.report({"ERROR"}, f"Invalid scenery: {e}")
             return {"CANCELLED"}
+        self._build_secs = int(time.monotonic() - build_start)
 
-        ctx = Context.make(lights=_lights_from_scene(context), dither=True, upt=TILE_SIZE)
-        tmp = tempfile.mkdtemp(prefix="vgs_test_")
-        try:
-            if kind == "large":
-                export_large_scenery_test(obj, ctx, tmp)
-                png = os.path.join(tmp, "preview_0.png")
-            elif kind == "wall":
-                export_wall_scenery_test(obj, ctx, tmp)
-                png = os.path.join(tmp, "wall_0.png")
-            else:
-                export_small_scenery_test(obj, ctx, tmp)
-                # Animated objects emit pose{g}_{d}.png; the static path emits
-                # scenery_{i}.png. Preview whichever the first frame produced.
-                png = os.path.join(tmp, "pose0_0.png" if obj.is_animated else "scenery_0.png")
-        except Exception as e:
-            self.report({"ERROR"}, f"Render failed: {e}")
-            return {"CANCELLED"}
-
-        if not os.path.exists(png):
-            self.report({"WARNING"}, "Render produced no sprite")
-            return {"CANCELLED"}
-
-        img = bpy.data.images.load(png, check_existing=False)
-        for area in context.screen.areas:
-            if area.type == "IMAGE_EDITOR":
-                area.spaces.active.image = img
-                break
-        self.report({"INFO"}, f"Test sprite loaded: {img.name}")
-        return {"FINISHED"}
-
-
-class VGS_OT_export_parkobj(Operator):
-    bl_idname = "vgs.export_parkobj"
-    bl_label = "Export .parkobj"
-    bl_description = "Render every sprite and write an OpenRCT2 scenery .parkobj"
-
-    filepath: StringProperty(subtype="FILE_PATH")
-    filename_ext = ".parkobj"
-    filter_glob: StringProperty(default="*.parkobj", options={"HIDDEN"})
-
-    def invoke(self, context, event):
-        ss = context.scene.vgs_scenery
-        if not self.filepath:
-            base = (ss.id or "scenery").replace("/", "_")
-            self.filepath = bpy.path.ensure_ext(base, ".parkobj")
-        context.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
-
-    def execute(self, context):
-        try:
-            kind, obj = _build_scenery_from_scene(context)
-        except scene_to_scenery.SceneError as e:
-            self.report({"ERROR"}, str(e))
-            return {"CANCELLED"}
-        except Exception as e:
-            self.report({"ERROR"}, f"Invalid scenery: {e}")
-            return {"CANCELLED"}
-
-        self._parkobj = bpy.path.abspath(self.filepath)
-        self._work = tempfile.mkdtemp(prefix="vgs_export_")
+        self._prepare(context, kind, obj)
         self._error = None
         self._done = False
         self._start_time = time.monotonic()
         self._spinner_step = 0
-        lights = _lights_from_scene(context)
 
         def worker():
             try:
-                ctx = Context.make(lights=lights, dither=True, upt=TILE_SIZE)
-                if kind == "large":
-                    export_large_scenery_to(obj, ctx, self._parkobj, self._work)
-                elif kind == "wall":
-                    export_wall_scenery_to(obj, ctx, self._parkobj, self._work)
-                else:
-                    export_small_scenery_to(obj, ctx, self._parkobj, self._work)
+                self._render(kind, obj)
             except Exception:
                 self._error = traceback.format_exc()
             finally:
@@ -201,7 +170,12 @@ class VGS_OT_export_parkobj(Operator):
         return {"PASS_THROUGH"}
 
     def _set_status(self, context, glyph: str, elapsed: int) -> None:
-        context.workspace.status_text_set(f"{glyph} Exporting .parkobj... {elapsed}s")
+        # Only mention the build time when it was non-trivial (animated / large
+        # builds); a static build is instant and "(build 0s)" would be noise.
+        build = f" (build {self._build_secs}s)" if self._build_secs else ""
+        context.workspace.status_text_set(
+            f"{glyph} {self._status_verb}... {elapsed}s{build}"
+        )
         context.window_manager.progress_update((self._spinner_step % 20) / 20.0)
 
     def _finish(self, context):
@@ -213,10 +187,91 @@ class VGS_OT_export_parkobj(Operator):
         self._thread.join()
         if self._error:
             print(self._error)
-            self.report({"ERROR"}, "Export failed; see the system console for details.")
+            self.report(
+                {"ERROR"}, f"{self._status_verb} failed; see the system console for details."
+            )
             return {"CANCELLED"}
+        return self._on_success(context)
+
+
+class VGS_OT_test_render(_RenderModalBase):
+    bl_idname = "vgs.test_render"
+    bl_label = "Test Render"
+    bl_description = "Render the scenery quickly and show it in the Image Editor"
+
+    _status_verb = "Rendering test"
+
+    def _prepare(self, context, kind, obj) -> None:
+        super()._prepare(context, kind, obj)
+        self._tmp = tempfile.mkdtemp(prefix="vgs_test_")
+        self._png = None
+
+    def _render(self, kind, obj) -> None:
+        ctx = Context.make(lights=self._lights, dither=True, upt=TILE_SIZE)
+        if kind == "large":
+            export_large_scenery_test(obj, ctx, self._tmp)
+            self._png = os.path.join(self._tmp, "preview_0.png")
+        elif kind == "wall":
+            export_wall_scenery_test(obj, ctx, self._tmp)
+            self._png = os.path.join(self._tmp, "wall_0.png")
+        else:
+            export_small_scenery_test(obj, ctx, self._tmp)
+            # Animated objects emit pose{g}_{d}.png; the static path emits
+            # scenery_{i}.png. Preview whichever the first frame produced.
+            name = "pose0_0.png" if obj.is_animated else "scenery_0.png"
+            self._png = os.path.join(self._tmp, name)
+
+    def _on_success(self, context):
+        if not self._png or not os.path.exists(self._png):
+            self.report({"WARNING"}, "Render produced no sprite")
+            return {"CANCELLED"}
+        img = bpy.data.images.load(self._png, check_existing=False)
+        for area in context.screen.areas:
+            if area.type == "IMAGE_EDITOR":
+                area.spaces.active.image = img
+                break
+        self.report({"INFO"}, f"Test sprite loaded: {img.name}")
+        return {"FINISHED"}
+
+
+class VGS_OT_export_parkobj(_RenderModalBase):
+    bl_idname = "vgs.export_parkobj"
+    bl_label = "Export .parkobj"
+    bl_description = "Render every sprite and write an OpenRCT2 scenery .parkobj"
+
+    _status_verb = "Exporting .parkobj"
+
+    filepath: StringProperty(subtype="FILE_PATH")
+    filename_ext = ".parkobj"
+    filter_glob: StringProperty(default="*.parkobj", options={"HIDDEN"})
+
+    def invoke(self, context, event):
+        ss = context.scene.vgs_scenery
+        if not self.filepath:
+            base = (ss.id or "scenery").replace("/", "_")
+            self.filepath = bpy.path.ensure_ext(base, ".parkobj")
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def _prepare(self, context, kind, obj) -> None:
+        super()._prepare(context, kind, obj)
+        self._parkobj = bpy.path.abspath(self.filepath)
+        self._work = tempfile.mkdtemp(prefix="vgs_export_")
+
+    def _render(self, kind, obj) -> None:
+        ctx = Context.make(lights=self._lights, dither=True, upt=TILE_SIZE)
+        if kind == "large":
+            export_large_scenery_to(obj, ctx, self._parkobj, self._work)
+        elif kind == "wall":
+            export_wall_scenery_to(obj, ctx, self._parkobj, self._work)
+        else:
+            export_small_scenery_to(obj, ctx, self._parkobj, self._work)
+
+    def _on_success(self, context):
         elapsed = int(time.monotonic() - self._start_time)
-        self.report({"INFO"}, f"Exported {os.path.basename(self._parkobj)} in {elapsed}s")
+        build = f" (build {self._build_secs}s)" if self._build_secs else ""
+        name = os.path.basename(self._parkobj)
+        self.report({"INFO"}, f"Exported {name} in {elapsed}s{build}")
         return {"FINISHED"}
 
 

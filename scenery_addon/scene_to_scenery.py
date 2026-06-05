@@ -273,6 +273,19 @@ def _sample_animation_poses(
             for i in range(num_poses)
         ]
 
+    # Each `frame_set` below forces a full-scene depsgraph re-evaluation on the
+    # main thread, so this loop blocks the UI (worse with dense / deforming
+    # meshes). Drive the cursor progress indicator so it reads as work, not a
+    # hang. `total` = rest pass + one step per pose. Guarded for background
+    # Blender, where there's no window / window manager.
+    wm = getattr(bpy.context, "window_manager", None)
+    win = getattr(bpy.context, "window", None)
+    total = len(frames) + 1
+    if wm is not None:
+        wm.progress_begin(0, total)
+    if win is not None:
+        win.cursor_set("WAIT")
+
     orig_frame = scene.frame_current
     meshes: list[Mesh] = []
     poses: list[list[dict]] = [[] for _ in frames]
@@ -295,6 +308,9 @@ def _sample_animation_poses(
             else:
                 r_rest_inv = obj.evaluated_get(dg).matrix_world.to_3x3().inverted_safe()
                 rigid.append((obj, idx, r_rest_inv))
+
+        if wm is not None:
+            wm.progress_update(1)
 
         last_slot = {obj: rest_idx for obj, rest_idx in deforming}
         for fi, f in enumerate(frames):
@@ -336,8 +352,14 @@ def _sample_animation_poses(
                     "position": _object_position(obj),
                     "orientation": [0.0, 0.0, 0.0],
                 })
+            if wm is not None:
+                wm.progress_update(fi + 2)
     finally:
         scene.frame_set(orig_frame)
+        if wm is not None:
+            wm.progress_end()
+        if win is not None:
+            win.cursor_set("DEFAULT")
 
     return meshes, poses
 
