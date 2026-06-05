@@ -48,8 +48,12 @@ def _render_scene_views(
 # vanilla per-sprite offsets (x_off=-32, base aligned to the tile) for all four
 # directions. Derived by matching SDN3's sprite offsets direction-by-direction.
 _HALF_TILE = TILE_SIZE / 2.0
-_H = _HALF_TILE
-_CORNER_BY_DIR = [(_H, _H), (-_H, _H), (-_H, -_H), (_H, -_H)]
+_CORNER_BY_DIR = [
+    (_HALF_TILE, _HALF_TILE),
+    (-_HALF_TILE, _HALF_TILE),
+    (-_HALF_TILE, -_HALF_TILE),
+    (_HALF_TILE, -_HALF_TILE),
+]
 
 # Reserved preview/menu image slots that precede the per-tile sprites; OpenRCT2
 # indexes per-tile sprites as `base + 4 + sequence*4 + direction`.
@@ -313,13 +317,6 @@ def render_wall(
             context, back, slope=True, **anchors
         )
     return _render_wall_block(context, combined, slope=allowed_on_slope, **anchors)
-
-
-def render_wall_flat(context: Context, combined: Mesh) -> list[IndexedImage]:
-    """Render only the 2 flat wall sprites (kept for callers/tests)."""
-    if combined.faces.shape[0] == 0:
-        return [IndexedImage.blank(1, 1) for _ in _WALL_FLAT_VIEWS]
-    return _render_wall_pair(context, combined)
 
 
 def _corners_by_dir(units_per_tile: float) -> list[tuple[float, float]]:

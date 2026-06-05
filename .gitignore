@@ -6,6 +6,11 @@ uv.lock
 
 .coverage
 
+# Tool caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
 *.DS_Store
 
 # Blender autosave backups

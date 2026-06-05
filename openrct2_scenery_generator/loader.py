@@ -40,6 +40,29 @@ def _load_units_per_tile(root: dict) -> float:
     return upt
 
 
+def _load_header(
+    obj: SmallScenery | LargeScenery | WallScenery,
+    root: dict,
+    preview: IndexedImage | None,
+    cursor_default: str,
+) -> None:
+    """Populate the fields every scenery kind shares (identity, render scale,
+    pricing, cursor, group). Kind-specific fields are loaded by the caller."""
+    obj.id = require_string(root, "id")
+    obj.original_id = optional_string(root, "original_id")
+    obj.name = require_string(root, "name")
+    obj.authors = optional_string_list(root, "authors")
+    v_str = optional_string(root, "version")
+    if v_str:
+        obj.version = v_str
+    obj.preview = preview if preview is not None else IndexedImage.blank(1, 1)
+
+    obj.units_per_tile = _load_units_per_tile(root)
+    obj.price = optional_number(root, "price", 1.0)
+    obj.cursor = optional_string(root, "cursor", cursor_default)
+    obj.scenery_group = optional_string(root, "scenery_group")
+
+
 def _load_model(value: Any, num_meshes: int) -> Model:
     """Parse the single-frame `model` placement list into a Model."""
     if value is None:
@@ -114,21 +137,9 @@ def build_small_scenery(
     """Build a SmallScenery from a parsed config dict + in-memory meshes."""
     root = config
     obj = SmallScenery()
+    _load_header(obj, root, preview, DEFAULT_CURSOR)
 
-    obj.id = require_string(root, "id")
-    obj.original_id = optional_string(root, "original_id")
-    obj.name = require_string(root, "name")
-    obj.authors = optional_string_list(root, "authors")
-    v_str = optional_string(root, "version")
-    if v_str:
-        obj.version = v_str
-
-    obj.preview = preview if preview is not None else IndexedImage.blank(1, 1)
-
-    obj.units_per_tile = _load_units_per_tile(root)
-    obj.price = optional_number(root, "price", 1.0)
     obj.removal_price = optional_number(root, "removal_price", obj.price)
-    obj.cursor = optional_string(root, "cursor", DEFAULT_CURSOR)
     obj.height = optional_int(root, "height", DEFAULT_HEIGHT)
 
     obj.shape = optional_string(root, "shape", "4/4")
@@ -136,7 +147,6 @@ def build_small_scenery(
         raise LoadError(
             f'Unrecognized shape "{obj.shape}" (expected one of {SMALL_SCENERY_SHAPES})'
         )
-    obj.scenery_group = optional_string(root, "scenery_group")
 
     obj.is_rotatable = optional_bool(root, "is_rotatable", True)
     obj.is_stackable = optional_bool(root, "is_stackable", False)
@@ -189,22 +199,10 @@ def build_large_scenery(
     """Build a LargeScenery from a parsed config dict + in-memory meshes."""
     root = config
     obj = LargeScenery()
+    _load_header(obj, root, preview, DEFAULT_CURSOR)
 
-    obj.id = require_string(root, "id")
-    obj.original_id = optional_string(root, "original_id")
-    obj.name = require_string(root, "name")
-    obj.authors = optional_string_list(root, "authors")
-    v_str = optional_string(root, "version")
-    if v_str:
-        obj.version = v_str
-    obj.preview = preview if preview is not None else IndexedImage.blank(1, 1)
-
-    obj.units_per_tile = _load_units_per_tile(root)
-    obj.price = optional_number(root, "price", 1.0)
     obj.removal_price = optional_number(root, "removal_price", obj.price)
-    obj.cursor = optional_string(root, "cursor", DEFAULT_CURSOR)
     obj.scrolling_mode = optional_int(root, "scrolling_mode", SCROLLING_MODE_NONE)
-    obj.scenery_group = optional_string(root, "scenery_group")
 
     obj.has_primary_colour = optional_bool(root, "has_primary_colour", False)
     obj.has_secondary_colour = optional_bool(root, "has_secondary_colour", False)
@@ -230,22 +228,10 @@ def build_wall_scenery(
     """Build a WallScenery from a parsed config dict + in-memory meshes."""
     root = config
     obj = WallScenery()
+    _load_header(obj, root, preview, WALL_DEFAULT_CURSOR)
 
-    obj.id = require_string(root, "id")
-    obj.original_id = optional_string(root, "original_id")
-    obj.name = require_string(root, "name")
-    obj.authors = optional_string_list(root, "authors")
-    v_str = optional_string(root, "version")
-    if v_str:
-        obj.version = v_str
-    obj.preview = preview if preview is not None else IndexedImage.blank(1, 1)
-
-    obj.units_per_tile = _load_units_per_tile(root)
-    obj.price = optional_number(root, "price", 1.0)
-    obj.cursor = optional_string(root, "cursor", WALL_DEFAULT_CURSOR)
     obj.height = optional_int(root, "height", 1)
     obj.scrolling_mode = optional_int(root, "scrolling_mode", SCROLLING_MODE_NONE)
-    obj.scenery_group = optional_string(root, "scenery_group")
 
     obj.has_primary_colour = optional_bool(root, "has_primary_colour", False)
     obj.has_secondary_colour = optional_bool(root, "has_secondary_colour", False)
