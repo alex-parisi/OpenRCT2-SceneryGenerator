@@ -78,9 +78,10 @@ export_small_scenery(obj, context, output_directory=".")          # writes <id>.
 | `scenery_large` | `4 + 4·numTiles` (4 reserved preview + tile-major, rotation-minor) | Per-direction corner anchor; tile coords are coordinate units (32/tile), sign-negated. Does **not** animate. |
 | `scenery_wall` | 2 (flat), 6 (+slope), or 12 (glass / double-sided) | Panel along a tile-edge diagonal; glass and front/back are split by material name. |
 
-See the [root README](../README.md) and [`CLAUDE.md`](../CLAUDE.md) for the full
-config schema and the hard-won OpenRCT2 format gotchas (the `scrollingMode` 255
-default, the per-direction large-scenery corner, the wall sub-pixel anchors).
+See the [root README](../README.md) for the full config schema. The hard-won
+OpenRCT2 format gotchas (the `scrollingMode` 255 default, the per-direction
+large-scenery corner, the wall sub-pixel anchors) are documented inline in
+`sprite_renderer.py` and `exporter.py`.
 
 ## CLI
 
@@ -92,7 +93,7 @@ uv run openrct2-scenery-generator --test examples/scenery_small/obelisk.yaml
 uv run openrct2-scenery-generator examples/scenery_large/gate.yaml
 
 # Reuse the previous run's images.dat (rebuild object.json only).
-uv run openrct2-scenery-generator --skip-render examples/scenery_wall/glass.yaml
+uv run openrct2-scenery-generator --skip-render examples/scenery_wall/glass_wall.yaml
 ```
 
 All paths in the config (`meshes`, `preview`, and `map_Kd` lines in `.mtl`

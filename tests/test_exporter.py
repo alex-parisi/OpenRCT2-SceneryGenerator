@@ -98,7 +98,7 @@ _TRI = "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
 def _small(tmp_path, **overrides):
     (tmp_path / "m.obj").write_text(_TRI)
     config = {
-        "id": "openrct2vg.scenery_small.test",
+        "id": "openrct2sg.scenery_small.test",
         "name": "Test",
         "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
         "shape": "4/4",
@@ -111,7 +111,7 @@ def _animated(tmp_path, poses=3, **overrides):
     (tmp_path / "m.obj").write_text(_TRI)
     offsets = list(range(poses)) + list(range(poses - 2, 0, -1))
     config = {
-        "id": "openrct2vg.scenery_small.anim",
+        "id": "openrct2sg.scenery_small.anim",
         "name": "Anim",
         "shape": "4/4",
         "animation": {
@@ -138,7 +138,7 @@ def _large(tmp_path, ntiles=2, **overrides):
     )
     tiles = [{"x": i, "y": 0, "z": 0, "clearance": 40} for i in range(ntiles)]
     config = {
-        "id": "openrct2vg.scenery_large.test",
+        "id": "openrct2sg.scenery_large.test",
         "name": "Test Gate",
         "object_type": "scenery_large",
         "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
@@ -161,7 +161,7 @@ def _wall(tmp_path, **overrides):
         "usemtl Glass\nf 2 4 3\n"
     )
     config = {
-        "id": "openrct2vg.scenery_wall.test",
+        "id": "openrct2sg.scenery_wall.test",
         "name": "Test Wall",
         "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
         **overrides,
@@ -247,7 +247,7 @@ def test_export_small_scenery_wrapper_names_by_id(tmp_path, monkeypatch):
     out_dir = tmp_path / "dist"
 
     export_small_scenery(obj, FakeContext(), out_dir)
-    assert (out_dir / "openrct2vg.scenery_small.test.parkobj").exists()
+    assert (out_dir / "openrct2sg.scenery_small.test.parkobj").exists()
 
 
 def test_export_small_scenery_test_writes_one_png_per_rotation(tmp_path):
@@ -289,7 +289,7 @@ def test_export_large_scenery_wrapper_names_by_id(tmp_path, monkeypatch):
     obj = _large(tmp_path)
     monkeypatch.chdir(tmp_path)
     export_large_scenery(obj, FakeContext(), tmp_path / "dist")
-    assert (tmp_path / "dist" / "openrct2vg.scenery_large.test.parkobj").exists()
+    assert (tmp_path / "dist" / "openrct2sg.scenery_large.test.parkobj").exists()
 
 
 def test_export_large_scenery_test_writes_preview_and_tile_pngs(tmp_path):
@@ -332,7 +332,7 @@ def test_export_wall_scenery_wrapper_names_by_id(tmp_path, monkeypatch):
     obj = _wall(tmp_path)
     monkeypatch.chdir(tmp_path)
     export_wall_scenery(obj, FakeContext(), tmp_path / "dist")
-    assert (tmp_path / "dist" / "openrct2vg.scenery_wall.test.parkobj").exists()
+    assert (tmp_path / "dist" / "openrct2sg.scenery_wall.test.parkobj").exists()
 
 
 def test_export_wall_scenery_test_writes_a_png_per_sprite(tmp_path):

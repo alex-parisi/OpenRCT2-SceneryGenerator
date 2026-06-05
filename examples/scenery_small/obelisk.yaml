@@ -1,6 +1,6 @@
-id: openrct2vg.scenery_small.obelisk
+id: openrct2sg.scenery_small.obelisk
 name: Stone Obelisk
-authors: [OpenRCT2-VehicleGenerator]
+authors: [OpenRCT2-SceneryGenerator]
 version: "1.0"
 
 output_directory: .

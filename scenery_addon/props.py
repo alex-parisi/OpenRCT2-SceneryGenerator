@@ -296,8 +296,8 @@ class VGSScenerySettings(PropertyGroup):
     )
     id: StringProperty(
         name="Object ID",
-        description="Unique id, e.g. openrct2vg.scenery_small.my_obj (avoid vanilla ids)",
-        default="openrct2vg.scenery_small.my_object",
+        description="Unique id, e.g. openrct2sg.scenery_small.my_obj (avoid vanilla ids)",
+        default="openrct2sg.scenery_small.my_object",
     )
     name: StringProperty(name="Name", default="My Scenery")
     authors: StringProperty(name="Authors", description="Comma-separated", default="")

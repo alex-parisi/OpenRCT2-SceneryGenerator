@@ -1,7 +1,7 @@
 object_type: scenery_large
-id: openrct2vg.scenery_large.gate
+id: openrct2sg.scenery_large.gate
 name: Stone Gate
-authors: [OpenRCT2-VehicleGenerator]
+authors: [OpenRCT2-SceneryGenerator]
 version: "1.0"
 
 output_directory: .

@@ -21,7 +21,6 @@ pure Python — no compiler or Embree needed.
 | [`openrct2_scenery_generator/`](openrct2_scenery_generator/README.md) | The Python core (config → render → `.parkobj`) |
 | [`scenery_addon/`](scenery_addon/README.md) | The Blender add-on internals (for contributors) |
 | [Example configs](#example-configs) | The YAML/JSON config used by the CLI |
-| [`CLAUDE.md`](CLAUDE.md) | Architecture, the `images.dat` format, and OpenRCT2 format gotchas |
 
 ## Requirements
 
@@ -106,8 +105,8 @@ tiles:
 OBJ meshes use **+X = forward**, **+Y = up**, **+Z = right**, with one tile =
 `TILE_SIZE` units. Materials are classified by **name** (`Remap1` for primary
 colour remap, `*Glass*` for translucent wall panels, `*Front*` / `*Back*` for
-double-sided wall faces, etc.) — see [`CLAUDE.md`](CLAUDE.md) for the full list
-and the per-object-type anchoring rules.
+double-sided wall faces, etc.). The per-object-type anchoring rules are
+documented inline in `openrct2_scenery_generator/sprite_renderer.py`.
 
 ## Blender add-on
 
@@ -132,6 +131,7 @@ uv run ruff check .           # lint
 uv run yamllint examples      # lint scenery configs
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for architecture, the `images.dat` sprite format,
-and the hard-won OpenRCT2 format gotchas (especially the large-scenery anchor
-and wall sub-pixel rules).
+See [`openrct2_scenery_generator/`](openrct2_scenery_generator/README.md) for the
+architecture. The hard-won OpenRCT2 format gotchas (the `images.dat` sprite
+layout, the large-scenery anchor, and the wall sub-pixel rules) are documented
+inline in `sprite_renderer.py` and `exporter.py`.

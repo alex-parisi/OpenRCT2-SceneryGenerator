@@ -69,7 +69,7 @@ def _make_scenery(tmp_path, **overrides):
     from openrct2_x7_renderer.mesh import load_mesh
 
     config = {
-        "id": "openrct2vg.scenery_small.test",
+        "id": "openrct2sg.scenery_small.test",
         "name": "Test",
         "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
         "shape": "4/4",
@@ -83,7 +83,7 @@ def test_build_json_shape(tmp_path):
     obj = _make_scenery(tmp_path, price=3.0, has_primary_colour=True)
     j = build_small_scenery_json(obj)
     assert j["objectType"] == "scenery_small"
-    assert j["id"] == "openrct2vg.scenery_small.test"
+    assert j["id"] == "openrct2sg.scenery_small.test"
     props = j["properties"]
     assert props["shape"] == "4/4"
     assert props["price"] == 3.0
@@ -126,7 +126,7 @@ def _make_animated(tmp_path, poses=3, **overrides):
     from openrct2_x7_renderer.mesh import load_mesh
 
     config = {
-        "id": "openrct2vg.scenery_small.anim",
+        "id": "openrct2sg.scenery_small.anim",
         "name": "Anim",
         "shape": "4/4",
         "animation": _animation_block(poses),
@@ -242,7 +242,7 @@ def _make_wall(tmp_path, *, glass=False, **overrides):
     from openrct2_x7_renderer.mesh import load_mesh
 
     config = {
-        "id": "openrct2vg.scenery_wall.test",
+        "id": "openrct2sg.scenery_wall.test",
         "name": "Test Wall",
         "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
         "has_glass": glass,
@@ -298,7 +298,7 @@ def _make_double_wall(tmp_path):
     from openrct2_x7_renderer.mesh import load_mesh
 
     config = {
-        "id": "openrct2vg.scenery_wall.dbl",
+        "id": "openrct2sg.scenery_wall.dbl",
         "name": "Double Wall",
         "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
         "is_double_sided": True,
@@ -353,7 +353,7 @@ def _make_large(tmp_path, ntiles=2, **overrides):
     )
     tiles = [{"x": i, "y": 0, "z": 0, "clearance": 40} for i in range(ntiles)]
     config = {
-        "id": "openrct2vg.scenery_large.test",
+        "id": "openrct2sg.scenery_large.test",
         "name": "Test Gate",
         "object_type": "scenery_large",
         "meshes": ["m.obj"],
