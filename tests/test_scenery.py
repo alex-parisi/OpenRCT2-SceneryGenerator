@@ -144,7 +144,12 @@ def test_animated_pose_groups_and_count(tmp_path):
     assert len(obj.model.meshes) == 1
     assert len(obj.model.meshes[0]) == 3
     # 4 base sprites + 3 groups * 4 rotations, regardless of is_rotatable.
-    assert count_small_scenery_sprites(obj.num_rotations, obj.num_pose_groups) == 16
+    assert (
+        count_small_scenery_sprites(
+            obj.num_rotations, obj.num_pose_groups, animated=obj.is_animated
+        )
+        == 16
+    )
 
 
 def test_animated_json_shape(tmp_path):

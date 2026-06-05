@@ -69,12 +69,17 @@ LARGE_SCENERY_PREVIEW_SLOTS = 4
 ANIMATED_BASE_SLOTS = 4
 
 
-def count_small_scenery_sprites(num_rotations: int, num_pose_groups: int = 1) -> int:
+def count_small_scenery_sprites(
+    num_rotations: int, num_pose_groups: int = 1, *, animated: bool = False
+) -> int:
     """Static scenery: `num_rotations` sprites. Animated scenery: a 4-sprite base
     group, then one group of 4 rotation sprites per pose (the engine's frame
     index hardcodes * 4 and adds +4 past the base), so
-    `4 + num_pose_groups * 4` regardless of `num_rotations`."""
-    if num_pose_groups > 1:
+    `4 + num_pose_groups * 4` regardless of `num_rotations` -- including the
+    degenerate single-pose case, which still emits the base group. The animated
+    layout is keyed on `animated`, not on `num_pose_groups`, to match what
+    `render_small_scenery_animated` actually emits."""
+    if animated:
         return ANIMATED_BASE_SLOTS + num_pose_groups * 4
     return num_rotations
 
@@ -105,8 +110,11 @@ def render_small_scenery_animated(
     cardinal rotations (group-major, direction-minor). Matches vanilla animated
     scenery, whose in-world animation index is `4 + frame_offsets[frame] * 4 +
     direction` (Paint.SmallScenery.cpp:293-296)."""
-    images: list[IndexedImage] = _render_pose_rotations(context, meshes, model, 0)
-    for g in range(num_pose_groups):
+    # The base group and pose group 0 are both pose 0's 4 rotations -- identical
+    # renders -- so render that pose once and reuse it for both.
+    base = _render_pose_rotations(context, meshes, model, 0)
+    images: list[IndexedImage] = list(base) + list(base)
+    for g in range(1, num_pose_groups):
         images.extend(_render_pose_rotations(context, meshes, model, g))
     return images
 

@@ -28,8 +28,8 @@ from openrct2_scenery_generator.loader import (
     build_small_scenery,
     build_wall_scenery,
 )
-from openrct2_x7_renderer.constants import TILE_SIZE, LightType
-from openrct2_x7_renderer.ray_trace import Context
+from openrct2_x7_renderer.cli import make_context
+from openrct2_x7_renderer.constants import LightType
 from openrct2_x7_renderer.types import Light
 
 from . import scene_to_scenery
@@ -207,7 +207,7 @@ class VGS_OT_test_render(_RenderModalBase):
         self._png = None
 
     def _render(self, kind, obj) -> None:
-        ctx = Context.make(lights=self._lights, dither=True, upt=TILE_SIZE)
+        ctx = make_context(self._lights, obj.units_per_tile, True)
         if kind == "large":
             export_large_scenery_test(obj, ctx, self._tmp)
             self._png = os.path.join(self._tmp, "preview_0.png")
@@ -259,7 +259,7 @@ class VGS_OT_export_parkobj(_RenderModalBase):
         self._work = tempfile.mkdtemp(prefix="vgs_export_")
 
     def _render(self, kind, obj) -> None:
-        ctx = Context.make(lights=self._lights, dither=True, upt=TILE_SIZE)
+        ctx = make_context(self._lights, obj.units_per_tile, False)
         if kind == "large":
             export_large_scenery_to(obj, ctx, self._parkobj, self._work)
         elif kind == "wall":
