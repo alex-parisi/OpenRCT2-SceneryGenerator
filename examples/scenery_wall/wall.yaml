@@ -1,7 +1,7 @@
 object_type: scenery_wall
-id: openrct2vg.scenery_wall.test_wall
+id: openrct2sg.scenery_wall.test_wall
 name: Test Wall
-authors: [OpenRCT2-VehicleGenerator]
+authors: [OpenRCT2-SceneryGenerator]
 version: "1.0"
 
 output_directory: .

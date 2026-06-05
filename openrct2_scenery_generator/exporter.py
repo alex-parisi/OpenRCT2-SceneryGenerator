@@ -5,14 +5,15 @@ Build object.json and assemble the scenery .parkobj ZIP.
 import json
 import math
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from openrct2_x7_renderer.geometry import combine_model_world
+from openrct2_x7_renderer.geometry import combine_model_world, rotate_x, rotate_y, rotate_z
 from openrct2_x7_renderer.image import write_png
 from openrct2_x7_renderer.images_dat import write_images_dat
-from openrct2_x7_renderer.ray_trace import VIEWS, Context, render_view, rotate_x, rotate_y, rotate_z
+from openrct2_x7_renderer.ray_trace import VIEWS, Context, SceneBuilder
 
 from .constants import COORDS_PER_TILE, SCROLLING_MODE_NONE
 from .sprite_renderer import (
@@ -23,9 +24,13 @@ from .sprite_renderer import (
 )
 from .types import LargeScenery, SmallScenery, WallScenery
 
+Scenery = SmallScenery | LargeScenery | WallScenery
+# (obj, context, work_dir) -> the object.json "images" list.
+RenderSprites = Callable[[Any, Context, Path], list[str]]
 
-def _add_model_to_context(
-    obj: SmallScenery | WallScenery, context: Context, frame: int = 0
+
+def _add_model_to_scene(
+    obj: SmallScenery | WallScenery, scene: SceneBuilder, frame: int = 0
 ) -> None:
     """Add the scenery's placed meshes to the open scene at the given pose
     frame (default 0 = the static/first pose)."""
@@ -36,7 +41,7 @@ def _add_model_to_context(
         rx, ry, rz = mf.orientation * math.pi / 180.0
         matrix = rotate_y(rx) @ rotate_z(ry) @ rotate_x(rz)
         translation = mf.position.astype(np.float64)
-        context.add_model(obj.meshes[mf.mesh_index], matrix, translation, 0)
+        scene.add_model(obj.meshes[mf.mesh_index], matrix, translation, 0)
 
 
 def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
@@ -87,11 +92,10 @@ def _render_sprites(obj: SmallScenery, context: Context, object_dir: Path) -> li
             context, obj.meshes, obj.model, obj.num_pose_groups
         )
     else:
-        context.begin_render()
-        _add_model_to_context(obj, context)
-        context.finalize_render()
-        images = render_small_scenery(context, num_rotations=obj.num_rotations)
-        context.end_render()
+        with context.begin_render() as scene:
+            _add_model_to_scene(obj, scene)
+            with scene.finalize() as ready:
+                images = render_small_scenery(ready, num_rotations=obj.num_rotations)
 
     out_path = object_dir / "images.dat"
     write_images_dat(images, out_path)
@@ -105,18 +109,21 @@ def _make_parkobj(object_dir: Path, output_path: Path) -> None:
         zf.write(object_dir / "images.dat", "images.dat")
 
 
-def export_small_scenery_to(
-    obj: SmallScenery,
+def _export_scenery(
+    obj: Scenery,
     context: Context,
     parkobj_path: Path | str,
     work_dir: Path | str,
+    obj_json: dict[str, Any],
+    render_sprites: RenderSprites,
     skip_render: bool = False,
 ) -> None:
+    """Render the sprites (or reuse a previous render) and zip object.json +
+    images.dat into the parkobj. Shared by all three scenery kinds; they differ
+    only in `obj_json` (the built metadata) and `render_sprites`."""
     parkobj_path = Path(parkobj_path)
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
-
-    obj_json = build_small_scenery_json(obj)
 
     if skip_render:
         prev = json.loads((work_dir / "object.json").read_text())
@@ -126,7 +133,7 @@ def export_small_scenery_to(
     else:
         for p in (work_dir / "object.json", work_dir / "images.dat"):
             p.unlink(missing_ok=True)
-        images_json = _render_sprites(obj, context, work_dir)
+        images_json = render_sprites(obj, context, work_dir)
 
     obj_json["images"] = images_json
     (work_dir / "object.json").write_text(json.dumps(obj_json, indent=4))
@@ -135,14 +142,26 @@ def export_small_scenery_to(
     _make_parkobj(work_dir, parkobj_path)
 
 
+def export_small_scenery_to(
+    obj: SmallScenery,
+    context: Context,
+    parkobj_path: Path | str,
+    work_dir: Path | str,
+    skip_render: bool = False,
+) -> None:
+    _export_scenery(
+        obj, context, parkobj_path, work_dir,
+        build_small_scenery_json(obj), _render_sprites, skip_render,
+    )
+
+
 def export_small_scenery(
     obj: SmallScenery, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    output_directory = Path(output_directory)
     export_small_scenery_to(
         obj,
         context,
-        output_directory / f"{obj.id}.parkobj",
+        Path(output_directory) / f"{obj.id}.parkobj",
         Path("object"),
         skip_render=skip_render,
     )
@@ -165,13 +184,12 @@ def export_small_scenery_test(
             for d in range(4):
                 write_png(images[4 + g * 4 + d], test_dir / f"pose{g}_{d}.png")
         return
-    context.begin_render()
-    _add_model_to_context(obj, context)
-    context.finalize_render()
-    for i in range(obj.num_rotations):
-        img = render_view(context, VIEWS[i])
-        write_png(img, test_dir / f"scenery_{i}.png")
-    context.end_render()
+    with context.begin_render() as scene:
+        _add_model_to_scene(obj, scene)
+        with scene.finalize() as ready:
+            for i in range(obj.num_rotations):
+                img = ready.render_view(VIEWS[i])
+                write_png(img, test_dir / f"scenery_{i}.png")
 
 
 # ---------------------------------------------------------------------------
@@ -258,37 +276,19 @@ def export_large_scenery_to(
     work_dir: Path | str,
     skip_render: bool = False,
 ) -> None:
-    parkobj_path = Path(parkobj_path)
-    work_dir = Path(work_dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
-
-    obj_json = build_large_scenery_json(obj)
-
-    if skip_render:
-        prev = json.loads((work_dir / "object.json").read_text())
-        images_json = prev.get("images")
-        if not isinstance(images_json, list):
-            raise RuntimeError('Property "images" is not an array')
-    else:
-        for p in (work_dir / "object.json", work_dir / "images.dat"):
-            p.unlink(missing_ok=True)
-        images_json = _render_large_sprites(obj, context, work_dir)
-
-    obj_json["images"] = images_json
-    (work_dir / "object.json").write_text(json.dumps(obj_json, indent=4))
-
-    parkobj_path.parent.mkdir(parents=True, exist_ok=True)
-    _make_parkobj(work_dir, parkobj_path)
+    _export_scenery(
+        obj, context, parkobj_path, work_dir,
+        build_large_scenery_json(obj), _render_large_sprites, skip_render,
+    )
 
 
 def export_large_scenery(
     obj: LargeScenery, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    output_directory = Path(output_directory)
     export_large_scenery_to(
         obj,
         context,
-        output_directory / f"{obj.id}.parkobj",
+        Path(output_directory) / f"{obj.id}.parkobj",
         Path("object"),
         skip_render=skip_render,
     )
@@ -332,7 +332,7 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
     # The glass x double-sided `+12` combo uses a separate, asymmetric layout we
     # don't generate (Paint.Wall.cpp:229-231). Emitting both flags would make the
     # engine index past our 12 images into nothing (silent glitch, same failure
-    # class as the vehicle-animation gotcha). Keep glass (vanilla-common), drop
+    # class as the vehicle-animation case). Keep glass (vanilla-common), drop
     # double-sided.
     double_sided = obj.is_double_sided
     if double_sided and obj.has_glass:
@@ -393,37 +393,19 @@ def export_wall_scenery_to(
     work_dir: Path | str,
     skip_render: bool = False,
 ) -> None:
-    parkobj_path = Path(parkobj_path)
-    work_dir = Path(work_dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
-
-    obj_json = build_wall_scenery_json(obj)
-
-    if skip_render:
-        prev = json.loads((work_dir / "object.json").read_text())
-        images_json = prev.get("images")
-        if not isinstance(images_json, list):
-            raise RuntimeError('Property "images" is not an array')
-    else:
-        for p in (work_dir / "object.json", work_dir / "images.dat"):
-            p.unlink(missing_ok=True)
-        images_json = _render_wall_sprites(obj, context, work_dir)
-
-    obj_json["images"] = images_json
-    (work_dir / "object.json").write_text(json.dumps(obj_json, indent=4))
-
-    parkobj_path.parent.mkdir(parents=True, exist_ok=True)
-    _make_parkobj(work_dir, parkobj_path)
+    _export_scenery(
+        obj, context, parkobj_path, work_dir,
+        build_wall_scenery_json(obj), _render_wall_sprites, skip_render,
+    )
 
 
 def export_wall_scenery(
     obj: WallScenery, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    output_directory = Path(output_directory)
     export_wall_scenery_to(
         obj,
         context,
-        output_directory / f"{obj.id}.parkobj",
+        Path(output_directory) / f"{obj.id}.parkobj",
         Path("object"),
         skip_render=skip_render,
     )

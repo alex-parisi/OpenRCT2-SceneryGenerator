@@ -46,7 +46,7 @@ def test_object_type_rejects_unknown():
 
 def _wall_config(**overrides):
     base = {
-        "id": "openrct2vg.scenery_wall.t",
+        "id": "openrct2sg.scenery_wall.t",
         "name": "T",
         "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
     }
@@ -70,7 +70,7 @@ def test_units_per_tile_defaults_to_tile_size(tri_mesh):
 
 def _large_config(tiles, **overrides):
     base = {
-        "id": "openrct2vg.scenery_large.t",
+        "id": "openrct2sg.scenery_large.t",
         "name": "T",
         "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
         "tiles": tiles,

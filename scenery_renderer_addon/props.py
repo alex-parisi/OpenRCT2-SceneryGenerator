@@ -5,7 +5,7 @@ consume (see scene_to_scenery.py), expressed as native Blender properties so a
 scenery object is authored entirely in the UI. Uses a `vgs_` prefix so this
 add-on can coexist with the vehicle add-on (`vg_`).
 
-NOTE: no ``from __future__ import annotations`` — PEP 563 would stringify the
+NOTE: no ``from __future__ import annotations``; PEP 563 would stringify the
 ``prop: SomeProperty(...)`` definitions and break Blender registration.
 """
 
@@ -146,7 +146,7 @@ ANIMATION_LOOP_ITEMS = [
 # How each animated object's geometry is sampled. The cheap default treats an
 # object as a rigid body (one mesh + a per-pose transform), which can't capture
 # armature/shape-key deformation. "Bake" re-extracts the deformed mesh at every
-# pose -- needed for skinned/deforming objects, at the cost of one mesh per pose.
+# pose, needed for skinned/deforming objects, at the cost of one mesh per pose.
 ANIMATION_DEFORM_ITEMS = [
     ("AUTO", "Auto", "Bake objects with an armature/deform modifier or animated "
      "shape keys; keep others rigid"),
@@ -296,8 +296,8 @@ class VGSScenerySettings(PropertyGroup):
     )
     id: StringProperty(
         name="Object ID",
-        description="Unique id, e.g. openrct2vg.scenery_small.my_obj (avoid vanilla ids)",
-        default="openrct2vg.scenery_small.my_object",
+        description="Unique id, e.g. openrct2sg.scenery_small.my_obj (avoid vanilla ids)",
+        default="openrct2sg.scenery_small.my_object",
     )
     name: StringProperty(name="Name", default="My Scenery")
     authors: StringProperty(name="Authors", description="Comma-separated", default="")

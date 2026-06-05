@@ -4,12 +4,20 @@ version = "0.1.1"
 description = "Author and export OpenRCT2 small/large/wall scenery from meshes (renders via openrct2-x7-renderer)."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "GPL-3.0-or-later"
+authors = [
+    { name = "Alex Parisi", email = "alex@atparisi.com" }
+]
 dependencies = [
-    "openrct2-x7-renderer>=0.1.0",
+    "openrct2-x7-renderer>=0.2.0",
     "numpy>=1.26",
     "pillow>=10.0",
     "pyyaml>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/alex-parisi/OpenRCT2-SceneryGenerator"
+Repository = "https://github.com/alex-parisi/OpenRCT2-SceneryGenerator"
 
 [project.scripts]
 openrct2-scenery-generator = "openrct2_scenery_generator.__main__:main"
@@ -17,6 +25,7 @@ openrct2-scenery-generator = "openrct2_scenery_generator.__main__:main"
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
     "mypy>=1.10",
     "types-PyYAML>=6.0",
     "ruff>=0.5",
@@ -25,7 +34,15 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --cov=openrct2_scenery_generator"
+
+[tool.coverage.run]
+source = ["openrct2_scenery_generator"]
+
+[tool.coverage.report]
+exclude_also = [
+    "if __name__ == .__main__.:",
+]
 
 [tool.ruff]
 line-length = 100
@@ -33,7 +50,13 @@ target-version = "py311"
 src = ["openrct2_scenery_generator", "scripts", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B", "W"]
+select = ["E", "F", "I", "UP", "B", "W", "N"]
+
+[tool.ruff.lint.per-file-ignores]
+# Blender mandates operator/UIList/panel class names like `SG_OT_name`,
+# `SG_UL_name`, `SG_PT_name` (and matching bpy var names), which trip
+# pep8-naming. They can't be renamed without breaking add-on registration.
+"scenery_renderer_addon/*" = ["N801", "N802", "N806"]
 
 [tool.mypy]
 python_version = "3.11"

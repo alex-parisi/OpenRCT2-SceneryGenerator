@@ -1,6 +1,6 @@
 name: build-plugin
 
-# Package the scenery_addon Blender add-on into per-platform extension zips. The
+# Package the scenery_renderer_addon Blender add-on into per-platform extension zips. The
 # renderer is the external PyPI package openrct2-x7-renderer (prebuilt
 # Embree-vendored wheels), so there's no native build here: we build this repo's
 # pure-Python front-end wheel, fetch the renderer + numpy/pillow/pyyaml from PyPI,
@@ -58,8 +58,8 @@ jobs:
       # and regenerate the manifest's wheel list.
       - name: Bundle wheels + regenerate manifest
         run: |
-          mkdir -p scenery_addon/wheels
-          cp dist/openrct2_scenerygenerator-*.whl scenery_addon/wheels/
+          mkdir -p scenery_renderer_addon/wheels
+          cp dist/openrct2_scenerygenerator-*.whl scenery_renderer_addon/wheels/
           python scripts/collect_wheels.py
 
       - name: Install Blender runtime libs
@@ -82,7 +82,7 @@ jobs:
           xvfb-run -a blender --version
           mkdir -p out
           xvfb-run -a blender --command extension build \
-            --source-dir scenery_addon --split-platforms --output-dir out
+            --source-dir scenery_renderer_addon --split-platforms --output-dir out
           ls -lh out
 
       - uses: actions/upload-artifact@v4

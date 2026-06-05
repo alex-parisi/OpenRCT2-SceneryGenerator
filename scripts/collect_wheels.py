@@ -2,25 +2,25 @@
 """Bundle the Blender add-on's wheels and regenerate the manifest.
 
 Blender extensions run in an isolated Python env and install ONLY the wheels
-listed in ``blender_manifest.toml`` -- pip is never consulted at install time.
+listed in ``blender_manifest.toml``; pip is never consulted at install time.
 So everything the add-on imports must be vendored as a wheel for each platform x
 Python combination Blender ships, or it fails to import (e.g. "No module named
 'PIL'").
 
 The add-on bundles three kinds of wheel:
 
-  1. The **renderer** (``openrct2-x7-renderer``) -- the external PyPI package with
+  1. The renderer (``openrct2-x7-renderer``): the external PyPI package with
      the Embree-vendored native extension. Platform + Python specific; downloaded
      here straight from PyPI (no CI build needed).
-  2. The **dependency** wheels (numpy, Pillow, PyYAML). Platform + Python
+  2. The dependency wheels (numpy, Pillow, PyYAML). Platform + Python
      specific; downloaded from PyPI.
-  3. The **front-end** wheel (``openrct2_scenerygenerator``) -- this repo, now
+  3. The front-end wheel (``openrct2_scenerygenerator``): this repo, now
      pure-Python (``py3-none-any``, one wheel for every target). Built separately
-     with ``uv build --wheel`` and placed in ``scenery_addon/wheels/`` before this
+     with ``uv build --wheel`` and placed in ``scenery_renderer_addon/wheels/`` before this
      runs.
 
 This script downloads (1) and (2) for all targets, then rewrites the manifest's
-``wheels = [...]`` to list every wheel present in ``scenery_addon/wheels/``
+``wheels = [...]`` to list every wheel present in ``scenery_renderer_addon/wheels/``
 (including the pre-placed front-end wheel).
 
 Run from the repo root (pip must be importable):
@@ -38,7 +38,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-ADDON = REPO / "scenery_addon"
+ADDON = REPO / "scenery_renderer_addon"
 WHEELS = ADDON / "wheels"
 MANIFEST = ADDON / "blender_manifest.toml"
 
@@ -47,7 +47,7 @@ MANIFEST = ADDON / "blender_manifest.toml"
 # pyproject.toml's `openrct2-x7-renderer>=...` dependency.
 RENDERER_DIST = "openrct2-x7-renderer"
 RENDERER_PREFIX = "openrct2_x7_renderer"
-RENDERER_VERSION = "0.1.0"
+RENDERER_VERSION = "0.2.0"
 
 # This repo's pure-Python front-end wheel (built + placed by the caller).
 FRONTEND_PREFIX = "openrct2_scenerygenerator"
@@ -59,7 +59,7 @@ DEPS = ("numpy", "pillow", "pyyaml")
 PYTHONS = (("3.11", "cp311"), ("3.13", "cp313"))
 
 # (label, --platform tags). Several dep tags per OS let pip pick each package's
-# compatible wheel -- e.g. numpy publishes a higher macOS minimum than Pillow.
+# compatible wheel; e.g. numpy publishes a higher macOS minimum than Pillow.
 TARGETS = (
     ("win_amd64", ["win_amd64"]),
     (
@@ -160,7 +160,7 @@ def main() -> None:
     )
     if not frontend:
         print(
-            f"\nWARNING: no {FRONTEND_PREFIX}-*.whl found in {WHEELS.relative_to(REPO)}/ -- "
+            f"\nWARNING: no {FRONTEND_PREFIX}-*.whl found in {WHEELS.relative_to(REPO)}/; "
             "build it with `uv build --wheel` and copy it in before `extension build`."
         )
 

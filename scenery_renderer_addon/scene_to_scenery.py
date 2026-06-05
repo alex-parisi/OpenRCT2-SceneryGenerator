@@ -18,17 +18,7 @@ import os
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
-from openrct2_x7_renderer.constants import (
-    MATERIAL_BACKGROUND_AA,
-    MATERIAL_BACKGROUND_AA_DARK,
-    MATERIAL_HAS_TEXTURE,
-    MATERIAL_IS_FLAT_SHADED,
-    MATERIAL_IS_MASK,
-    MATERIAL_IS_REMAPPABLE,
-    MATERIAL_IS_VISIBLE_MASK,
-    MATERIAL_NO_AO,
-    MATERIAL_NO_BLEED,
-)
+from openrct2_x7_renderer.constants import MaterialFlag
 from openrct2_x7_renderer.image import quantize_to_indexed, read_png
 from openrct2_x7_renderer.mesh import Material, Mesh, load_texture
 from openrct2_x7_renderer.types import IndexedImage
@@ -38,9 +28,9 @@ _BASIS = Matrix(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0)))
 
 _REGION_MAP = {
     "NONE": (0, 0),
-    "REMAP1": (MATERIAL_IS_REMAPPABLE, 1),
-    "REMAP2": (MATERIAL_IS_REMAPPABLE, 2),
-    "REMAP3": (MATERIAL_IS_REMAPPABLE, 3),
+    "REMAP1": (MaterialFlag.IS_REMAPPABLE, 1),
+    "REMAP2": (MaterialFlag.IS_REMAPPABLE, 2),
+    "REMAP3": (MaterialFlag.IS_REMAPPABLE, 3),
     "GREYSCALE": (0, 4),
     "PEEP": (0, 5),
     "CHAIN": (0, 6),
@@ -98,19 +88,19 @@ def _material_from_bpy(bmat) -> Material:
     m.flags |= flag
     m.region = region
     if s.is_visible_mask:
-        m.flags |= MATERIAL_IS_VISIBLE_MASK
+        m.flags |= MaterialFlag.IS_VISIBLE_MASK
     elif s.is_mask:
-        m.flags |= MATERIAL_IS_MASK
+        m.flags |= MaterialFlag.IS_MASK
     if s.no_ao:
-        m.flags |= MATERIAL_NO_AO
+        m.flags |= MaterialFlag.NO_AO
     if s.edge:
-        m.flags |= MATERIAL_BACKGROUND_AA
+        m.flags |= MaterialFlag.BACKGROUND_AA
     if s.dark_edge:
-        m.flags |= MATERIAL_BACKGROUND_AA_DARK
+        m.flags |= MaterialFlag.BACKGROUND_AA_DARK
     if s.no_bleed:
-        m.flags |= MATERIAL_NO_BLEED
+        m.flags |= MaterialFlag.NO_BLEED
     if s.flat_shaded:
-        m.flags |= MATERIAL_IS_FLAT_SHADED
+        m.flags |= MaterialFlag.IS_FLAT_SHADED
 
     # Wall-only classification (ignored by every other path): the glass overlay
     # split and the double-sided front/back split. Mirrors the MTL *Glass* /
@@ -125,7 +115,7 @@ def _material_from_bpy(bmat) -> Material:
         path = bpy.path.abspath(s.texture.filepath_from_user() or s.texture.filepath)
         if path and os.path.exists(path):
             m.texture = load_texture(path)
-            m.flags |= MATERIAL_HAS_TEXTURE
+            m.flags |= MaterialFlag.HAS_TEXTURE
     return m
 
 
@@ -196,7 +186,7 @@ def _geometry_objects(scene) -> list:
 
 
 # Modifiers that animate an object's *vertices* (not just its transform) over
-# the timeline. An object carrying one of these -- or animated shape keys --
+# the timeline. An object carrying one of these (or animated shape keys)
 # must have its mesh re-extracted per pose to capture the deformation.
 _DEFORM_MODIFIERS = {
     "ARMATURE",
@@ -283,6 +273,19 @@ def _sample_animation_poses(
             for i in range(num_poses)
         ]
 
+    # Each `frame_set` below forces a full-scene depsgraph re-evaluation on the
+    # main thread, so this loop blocks the UI (worse with dense / deforming
+    # meshes). Drive the cursor progress indicator so it reads as work, not a
+    # hang. `total` = rest pass + one step per pose. Guarded for background
+    # Blender, where there's no window / window manager.
+    wm = getattr(bpy.context, "window_manager", None)
+    win = getattr(bpy.context, "window", None)
+    total = len(frames) + 1
+    if wm is not None:
+        wm.progress_begin(0, total)
+    if win is not None:
+        win.cursor_set("WAIT")
+
     orig_frame = scene.frame_current
     meshes: list[Mesh] = []
     poses: list[list[dict]] = [[] for _ in frames]
@@ -305,6 +308,9 @@ def _sample_animation_poses(
             else:
                 r_rest_inv = obj.evaluated_get(dg).matrix_world.to_3x3().inverted_safe()
                 rigid.append((obj, idx, r_rest_inv))
+
+        if wm is not None:
+            wm.progress_update(1)
 
         last_slot = {obj: rest_idx for obj, rest_idx in deforming}
         for fi, f in enumerate(frames):
@@ -346,8 +352,14 @@ def _sample_animation_poses(
                     "position": _object_position(obj),
                     "orientation": [0.0, 0.0, 0.0],
                 })
+            if wm is not None:
+                wm.progress_update(fi + 2)
     finally:
         scene.frame_set(orig_frame)
+        if wm is not None:
+            wm.progress_end()
+        if win is not None:
+            win.cursor_set("DEFAULT")
 
     return meshes, poses
 

@@ -1,4 +1,4 @@
-"""OpenRCT2 Scenery Generator — Blender add-on entry point.
+"""OpenRCT2 Scenery Generator: Blender add-on entry point.
 
 Registration order matters: PropertyGroups (and their Scene/Object/Material
 pointer properties) must exist before the panels that draw them. The renderer
