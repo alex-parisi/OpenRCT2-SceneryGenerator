@@ -4,7 +4,12 @@ scenery_addon/wheels/
 uv.lock
 .idea/
 
+.coverage
+
 *.DS_Store
+
+# Blender autosave backups
+*.blend1
 
 # Python / uv / build
 .venv/

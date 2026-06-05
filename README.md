@@ -13,6 +13,16 @@ pure Python — no compiler or Embree needed.
 > This is the scenery sibling of **OpenRCT2-VehicleGenerator**; both share the
 > same renderer and packaging approach.
 
+## Documentation
+
+| Guide | For |
+|---|---|
+| [Quickstart](#quickstart) / [CLI usage](#cli-usage) | Rendering an example from the command line |
+| [`openrct2_scenery_generator/`](openrct2_scenery_generator/README.md) | The Python core (config → render → `.parkobj`) |
+| [`scenery_addon/`](scenery_addon/README.md) | The Blender add-on internals (for contributors) |
+| [Example configs](#example-configs) | The YAML/JSON config used by the CLI |
+| [`CLAUDE.md`](CLAUDE.md) | Architecture, the `images.dat` format, and OpenRCT2 format gotchas |
+
 ## Requirements
 
 - Python ≥ 3.11
