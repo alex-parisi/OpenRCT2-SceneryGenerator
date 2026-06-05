@@ -4,7 +4,7 @@ across all three scenery kinds.
 The native ray tracer is stubbed via a fake render context that mirrors the
 renderer's begin_render -> SceneBuilder -> FinalizedScene flow: every view
 renders a 1x1 dummy and the lifecycle (begin/add/finalize/end) is recorded.
-Everything downstream of the pixels -- write_images_dat, write_png, the zip --
+Everything downstream of the pixels (write_images_dat, write_png, the zip)
 runs for real against tmp_path. The build_*_json shapes are covered by
 test_scenery / test_scenery_loader; this file owns the export/file-writing path.
 """

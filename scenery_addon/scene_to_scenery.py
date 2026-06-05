@@ -186,7 +186,7 @@ def _geometry_objects(scene) -> list:
 
 
 # Modifiers that animate an object's *vertices* (not just its transform) over
-# the timeline. An object carrying one of these -- or animated shape keys --
+# the timeline. An object carrying one of these (or animated shape keys)
 # must have its mesh re-extracted per pose to capture the deformation.
 _DEFORM_MODIFIERS = {
     "ARMATURE",

@@ -332,7 +332,7 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
     # The glass x double-sided `+12` combo uses a separate, asymmetric layout we
     # don't generate (Paint.Wall.cpp:229-231). Emitting both flags would make the
     # engine index past our 12 images into nothing (silent glitch, same failure
-    # class as the vehicle-animation gotcha). Keep glass (vanilla-common), drop
+    # class as the vehicle-animation case). Keep glass (vanilla-common), drop
     # double-sided.
     double_sided = obj.is_double_sided
     if double_sided and obj.has_glass:

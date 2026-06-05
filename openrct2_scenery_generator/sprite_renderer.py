@@ -5,7 +5,7 @@ Unlike vehicles (16 sprite groups of pitch/roll/yaw track rotations), scenery
 needs only the cardinal rotations: VIEWS[i] == rotate_y(i * pi/2), so rendering
 the prepared scene under the first `num_rotations` views yields the rotation
 sprites OpenRCT2 expects. Colour remap (primary/secondary) is baked per-pixel by
-the palette region of remappable materials, exactly as for vehicles — it does
+the palette region of remappable materials, exactly as for vehicles; it does
 not add sprites here.
 """
 
@@ -75,7 +75,7 @@ def count_small_scenery_sprites(
     """Static scenery: `num_rotations` sprites. Animated scenery: a 4-sprite base
     group, then one group of 4 rotation sprites per pose (the engine's frame
     index hardcodes * 4 and adds +4 past the base), so
-    `4 + num_pose_groups * 4` regardless of `num_rotations` -- including the
+    `4 + num_pose_groups * 4` regardless of `num_rotations`, including the
     degenerate single-pose case, which still emits the base group. The animated
     layout is keyed on `animated`, not on `num_pose_groups`, to match what
     `render_small_scenery_animated` actually emits."""
@@ -110,8 +110,8 @@ def render_small_scenery_animated(
     cardinal rotations (group-major, direction-minor). Matches vanilla animated
     scenery, whose in-world animation index is `4 + frame_offsets[frame] * 4 +
     direction` (Paint.SmallScenery.cpp:293-296)."""
-    # The base group and pose group 0 are both pose 0's 4 rotations -- identical
-    # renders -- so render that pose once and reuse it for both.
+    # The base group and pose group 0 are both pose 0's 4 rotations (identical
+    # renders), so render that pose once and reuse it for both.
     base = _render_pose_rotations(context, meshes, model, 0)
     images: list[IndexedImage] = list(base) + list(base)
     for g in range(1, num_pose_groups):
@@ -125,19 +125,19 @@ def count_large_scenery_sprites(num_tiles: int) -> int:
 
 
 # Walls: a wall sprite is the panel along one diagonal, anchored at ONE END (a
-# tile corner) -- the engine places it on the correct edge via its paint offset,
+# tile corner); the engine places it on the correct edge via its paint offset,
 # so the sprite itself need not be on an edge. The panel is shifted to its -Z end
 # and rendered under VIEWS[1] (sprite 0) and VIEWS[0] (sprite 1). The author
 # models the panel running along OBJ +Z.
 _WALL_FLAT_VIEWS = (1, 0)
 # Per-view half-pixel grid alignment. A panel spanning the full tile edge projects
-# to 34px when its end sits exactly on the world origin -- straddling the pixel
+# to 34px when its end sits exactly on the world origin, straddling the pixel
 # grid so AA spills an extra column on each outer end, overlapping the neighbour by
 # 2px (the visible "bleed"). Nudging the anchor in Z lands it cleanly on 33px. The
 # two diagonal views fall on the grid at DIFFERENT sub-pixel phases (the iso
 # half-pixel asymmetry vanilla bakes into its hand-drawn art), so each needs its
 # own nudge: a single shared shift can match only one. With these, both flat
-# sprites hit vanilla exactly -- VIEWS[1] -> x_off -31 base 15, VIEWS[0] -> x_off
+# sprites hit vanilla exactly: VIEWS[1] -> x_off -31 base 15, VIEWS[0] -> x_off
 # -1 base 16. One tile edge projects to 32px (UNITS_PER_TILE / UNITS_PER_PIXEL),
 # so a half pixel is TILE_SIZE / 64.
 _HALF_PIXEL = TILE_SIZE / 64.0
@@ -186,7 +186,7 @@ def _render_wall_pair(
 ) -> list[IndexedImage]:
     """Render a wall mesh under the two diagonal views, each end-anchored with its
     own per-view shift (the two views need different sub-pixel nudges to land on
-    the grid -- see _WALL_VIEW_SHIFT). `view_shift` is in OBJ units, so callers
+    the grid; see _WALL_VIEW_SHIFT). `view_shift` is in OBJ units, so callers
     scale it with the authored render scale."""
     out: list[IndexedImage] = []
     for v in _WALL_FLAT_VIEWS:
@@ -197,7 +197,7 @@ def _render_wall_pair(
 
 def _submesh(mesh: Mesh, keep: np.ndarray) -> Mesh:
     """A mesh with only the faces selected by the boolean `keep` mask (vertices,
-    normals and materials are shared by reference -- the renderer only touches
+    normals and materials are shared by reference; the renderer only touches
     referenced ones)."""
     return Mesh(
         vertices=mesh.vertices,
@@ -233,7 +233,7 @@ def _rotate_y180(mesh: Mesh) -> Mesh:
     """Rotate a mesh 180 deg about the vertical (Y) axis: negate X and Z on
     vertices and normals. A proper rotation (winding/handedness preserved), so
     the rear faces turn to face the camera. The panel's Z-range is symmetric so
-    it is unchanged -- the same end-anchor and slope shear apply -- while the
+    it is unchanged (the same end-anchor and slope shear apply), while the
     content mirrors left-right, as a wall does when viewed from behind."""
     v = mesh.vertices.copy()
     v[:, 0] *= -1.0
@@ -261,7 +261,7 @@ def _render_wall_block(
     view_shift: dict[int, float] = _WALL_VIEW_SHIFT,
 ) -> list[IndexedImage]:
     """One wall image block: 2 flat sprites, plus (if `slope`) 4 slope-sheared
-    sprites -- offsets 2,3 = slope-up, 4,5 = slope-down, each in the two diagonal
+    sprites: offsets 2,3 = slope-up, 4,5 = slope-down, each in the two diagonal
     orientations. Empty meshes yield blank placeholders so the block stays the
     right length. The OBJ-unit anchors (`rise`, `down_raise`, `view_shift`) are
     passed in pre-scaled to the authored render scale."""
@@ -293,7 +293,7 @@ def render_wall(
 
     Glass: the engine always layers a translucent overlay sprite at
     `imageIndex + 6` (Paint.Wall.cpp:148), so glass implies the full 6-slot
-    block layout -- 6 opaque body sprites (non-glass faces) at offsets 0..5,
+    block layout: 6 opaque body sprites (non-glass faces) at offsets 0..5,
     then 6 glass-only overlay sprites at offsets 6..11, for 12 total. Matches
     every vanilla glass wall (all are slope-allowed, 12 images).
 
@@ -302,7 +302,7 @@ def render_wall(
     same screen footprint as the front. Front block (0..5) = faces not tagged
     *Back*; back block (6..11) = faces not tagged *Front*, rotated 180 deg so the
     rear faces the camera. 12 total. (The glass x double `+12` combo is not
-    generated -- callers must not set both.)
+    generated; callers must not set both.)
 
     `units_per_tile` is the authored render scale; the OBJ-unit slope shear and
     per-view grid nudges are calibrated at TILE_SIZE, so they scale with it."""

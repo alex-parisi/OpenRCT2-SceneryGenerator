@@ -1,7 +1,7 @@
 # scenery_addon
 
 The Blender 4.2+ add-on (extension). It is the UI + scene adapter only: the
-whole pipeline — config validation, rendering, `.parkobj` assembly — lives in the
+whole pipeline (config validation, rendering, `.parkobj` assembly) lives in the
 bundled [`openrct2_scenery_generator`](../openrct2_scenery_generator/) and
 [`openrct2-x7-renderer`](https://pypi.org/project/openrct2-x7-renderer/) wheels.
 This package reads the Blender scene, hands the core an in-memory config dict +
@@ -13,14 +13,14 @@ It ships as a separate extension (`id = "openrct2sg"`) from the vehicle add-on
 ## How it works
 
 1. **Properties** (`props.py`): native Blender `PropertyGroup`s store the entire
-   object in the `.blend` file — object-wide settings on `scene.vgs_scenery`,
+   object in the `.blend` file: object-wide settings on `scene.vgs_scenery`,
    per-object role on `object.vgs_object`, per-material region/shading on
    `material.vgs_material`. Enum item lists are sourced from the installed
    `openrct2_scenery_generator` package, so the UI can never offer a value the
    loader would reject.
 2. **Panels** (`panels.py`): draw those properties in the 3D Viewport **OpenRCT2**
-   sidebar tab — `VGS_PT_scenery` (object-wide) and `VGS_PT_object_view3d` (active
-   object + its materials) — plus the `UIList`s for the large-scenery tile list
+   sidebar tab: `VGS_PT_scenery` (object-wide) and `VGS_PT_object_view3d` (active
+   object + its materials), plus the `UIList`s for the large-scenery tile list
    (`VGS_UL_tiles`) and custom lights (`VGS_UL_lights`). The selected-object panel
    shares a `bl_idname` with the vehicle add-on's parent so the two extensions
    stack cleanly under one header.
@@ -43,7 +43,7 @@ properties, so the property groups must exist first).
 ## Coordinate convention
 
 OBJ space is +X forward, +Y up, +Z right. A Blender vertex `(bx, by, bz)` maps to
-OBJ `(bx, bz, -by)` via the `_BASIS` matrix — a proper rotation (det = +1), so
+OBJ `(bx, bz, -by)` via the `_BASIS` matrix, a proper rotation (det = +1), so
 triangle winding is preserved. 1 tile = `TILE_SIZE` OBJ units. The animation
 sampler emits rigid per-pose deltas with `to_euler("YZX")` to match the
 renderer's `rotate_y(a) @ rotate_z(b) @ rotate_x(c)` ordering; see the module

@@ -1,14 +1,13 @@
 # OpenRCT2 Scenery Generator
 
-Author and export **OpenRCT2 scenery objects** — small scenery, large
-(multi-tile) scenery, and walls — from 3D meshes. Geometry is ray-traced into
-the isometric sprite sheets OpenRCT2 expects and packaged as a ready-to-install
-`.parkobj`.
+Author and export OpenRCT2 scenery objects (small scenery, large multi-tile
+scenery, and walls) from 3D meshes. Geometry is ray-traced into the isometric
+sprite sheets OpenRCT2 expects and packaged as a ready-to-install `.parkobj`.
 
 Rendering is handled by the external
 [`openrct2-x7-renderer`](https://pypi.org/project/openrct2-x7-renderer/) package
 (an Embree-backed ray tracer shipping prebuilt, vendored wheels), so this repo is
-pure Python — no compiler or Embree needed.
+pure Python, with no compiler or Embree needed.
 
 > This is the scenery sibling of **OpenRCT2-VehicleGenerator**; both share the
 > same renderer and packaging approach.
@@ -25,7 +24,7 @@ pure Python — no compiler or Embree needed.
 ## Requirements
 
 - Python ≥ 3.11
-- [uv](https://docs.astral.sh/uv/) (recommended) — `uv sync` pulls everything,
+- [uv](https://docs.astral.sh/uv/) (recommended); `uv sync` pulls everything,
   including the renderer wheel from PyPI.
 
 ## Quickstart
@@ -49,9 +48,9 @@ Install the resulting `.parkobj` into OpenRCT2's `object/` directory and
 openrct2-scenery-generator [--test|--skip-render] <input.json|.yaml>
 ```
 
-- `--test` — render a single viewpoint per object to `test/` for fast iteration
+- `--test`: render a single viewpoint per object to `test/` for fast iteration
   (no `.parkobj` produced).
-- `--skip-render` — emit `object.json` / packaging without re-rendering sprites.
+- `--skip-render`: emit `object.json` / packaging without re-rendering sprites.
 
 The config format is JSON or YAML (chosen by file extension). The top-level
 `object_type` field selects the path:
@@ -132,6 +131,6 @@ uv run yamllint examples      # lint scenery configs
 ```
 
 See [`openrct2_scenery_generator/`](openrct2_scenery_generator/README.md) for the
-architecture. The hard-won OpenRCT2 format gotchas (the `images.dat` sprite
-layout, the large-scenery anchor, and the wall sub-pixel rules) are documented
-inline in `sprite_renderer.py` and `exporter.py`.
+architecture. The OpenRCT2 format details (the `images.dat` sprite layout, the
+large-scenery anchor, and the wall sub-pixel rules) are documented inline in
+`sprite_renderer.py` and `exporter.py`.

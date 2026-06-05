@@ -3,7 +3,7 @@
 These helpers do the mesh maths the wall pipeline relies on (slope shear, the
 180-degree rear-block rotation, per-direction tile corners, and the
 glass/front-back face splits). None of them touch the native renderer, so they
-are exercised directly here -- the calibrated *pixel* offsets are verified
+are exercised directly here; the calibrated *pixel* offsets are verified
 in-game, but the geometry these produce can be checked numerically.
 """
 

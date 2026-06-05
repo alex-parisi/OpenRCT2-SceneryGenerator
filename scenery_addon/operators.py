@@ -1,7 +1,7 @@
 """Blender operators for the scenery add-on: test render, threaded export,
 and tile/light list management.
 
-NOTE: no ``from __future__ import annotations`` — operators declare bpy
+NOTE: no ``from __future__ import annotations``; operators declare bpy
 properties as annotations and PEP 563 would break registration.
 """
 
@@ -89,8 +89,8 @@ class _RenderModalBase(Operator):
     thread while showing a status-bar spinner + window-manager progress bar.
 
     The build phase (`_build_scenery_from_scene`, which reads bpy data and may
-    run the animated-pose sampler) stays on the main thread — it carries its own
-    progress bar from `scene_to_scenery` — and only the renderer-bound work is
+    run the animated-pose sampler) stays on the main thread (it carries its own
+    progress bar from `scene_to_scenery`); only the renderer-bound work is
     threaded. The progress bar here is *indeterminate* (a cycling fill): the
     renderer is an opaque external package with no per-sprite callback, so there
     is no real fraction to report.

@@ -2,8 +2,8 @@
 
 The pure-Python front-end that turns a scenery config (YAML/JSON or an in-memory
 dict) into a finished OpenRCT2 `.parkobj`. It owns everything *scenery*-specific
-— the three object schemas (`scenery_small`, `scenery_large`, `scenery_wall`),
-the per-view render dispatch, and `.parkobj` assembly — and calls into
+(the three object schemas `scenery_small`, `scenery_large`, `scenery_wall`,
+the per-view render dispatch, and `.parkobj` assembly) and calls into
 [`openrct2-x7-renderer`](https://pypi.org/project/openrct2-x7-renderer/) for the
 actual ray tracing, OBJ/MTL parsing, RCT2 palette, and `images.dat` packing.
 
@@ -45,8 +45,8 @@ and default light rig match the renderer's. A small `_DISPATCH` table maps each
 
 Mesh OBJs use **+X = forward**, **+Y = up**, **+Z = right**; 1 tile =
 `TILE_SIZE` units. Orientation Euler angles `[a, b, c]` (degrees) are applied as
-`rotate_y(a) @ rotate_z(b) @ rotate_x(c)` — so `[0, 90, 0]` rotates around the
-**Z** axis, not Y.
+`rotate_y(a) @ rotate_z(b) @ rotate_x(c)`, so `[0, 90, 0]` rotates around the
+Z axis, not Y.
 
 ## Public API
 
@@ -78,10 +78,10 @@ export_small_scenery(obj, context, output_directory=".")          # writes <id>.
 | `scenery_large` | `4 + 4·numTiles` (4 reserved preview + tile-major, rotation-minor) | Per-direction corner anchor; tile coords are coordinate units (32/tile), sign-negated. Does **not** animate. |
 | `scenery_wall` | 2 (flat), 6 (+slope), or 12 (glass / double-sided) | Panel along a tile-edge diagonal; glass and front/back are split by material name. |
 
-See the [root README](../README.md) for the full config schema. The hard-won
-OpenRCT2 format gotchas (the `scrollingMode` 255 default, the per-direction
-large-scenery corner, the wall sub-pixel anchors) are documented inline in
-`sprite_renderer.py` and `exporter.py`.
+See the [root README](../README.md) for the full config schema. The OpenRCT2
+format details (the `scrollingMode` 255 default, the per-direction large-scenery
+corner, the wall sub-pixel anchors) are documented inline in `sprite_renderer.py`
+and `exporter.py`.
 
 ## CLI
 

@@ -186,7 +186,7 @@ def stage_addon(stage: Path, wheels_src: Path, manifest_platform: str, addon_dir
 
 
 def verify_wheel(wheel: Path) -> None:
-    """Import the renderer wheel in a clean env -- catches an unvendored Embree."""
+    """Import the renderer wheel in a clean env to catch an unvendored Embree."""
     run(
         [
             "uv",
