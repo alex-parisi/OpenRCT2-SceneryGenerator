@@ -28,14 +28,14 @@ from openrct2_scenery_generator.loader import (
     build_small_scenery,
     build_wall_scenery,
 )
-from openrct2_x7_renderer.constants import LIGHT_DIFFUSE, LIGHT_SPECULAR, TILE_SIZE
+from openrct2_x7_renderer.constants import TILE_SIZE, LightType
 from openrct2_x7_renderer.ray_trace import Context
 from openrct2_x7_renderer.types import Light
 
 from . import scene_to_scenery
 
 _SPINNER_FRAMES = "|/-\\"
-_LIGHT_TYPES = {"diffuse": LIGHT_DIFFUSE, "specular": LIGHT_SPECULAR}
+_LIGHT_TYPES = {"diffuse": LightType.DIFFUSE, "specular": LightType.SPECULAR}
 
 
 def _normalize(v):
@@ -46,15 +46,15 @@ def _normalize(v):
 
 def _default_lights() -> list[Light]:
     return [
-        Light(LIGHT_DIFFUSE, 0, _normalize([0.0, -1.0, 0.0]), 0.1),
-        Light(LIGHT_DIFFUSE, 0, _normalize([0.0, 0.5, -1.0]), 0.8),
-        Light(LIGHT_SPECULAR, 1, _normalize([1.0, 1.65, -1.0]), 0.5),
-        Light(LIGHT_DIFFUSE, 1, _normalize([1.0, 1.7, -1.0]), 0.8),
-        Light(LIGHT_DIFFUSE, 0, np.array([0.0, 1.0, 0.0], dtype=np.float64), 0.45),
-        Light(LIGHT_DIFFUSE, 0, _normalize([-1.0, 0.85, 1.0]), 0.475),
-        Light(LIGHT_DIFFUSE, 0, _normalize([0.75, 0.4, -1.0]), 0.6),
-        Light(LIGHT_DIFFUSE, 0, _normalize([1.0, 0.25, 0.0]), 0.5),
-        Light(LIGHT_DIFFUSE, 0, _normalize([-1.0, -0.5, 0.0]), 0.1),
+        Light(LightType.DIFFUSE, 0, _normalize([0.0, -1.0, 0.0]), 0.1),
+        Light(LightType.DIFFUSE, 0, _normalize([0.0, 0.5, -1.0]), 0.8),
+        Light(LightType.SPECULAR, 1, _normalize([1.0, 1.65, -1.0]), 0.5),
+        Light(LightType.DIFFUSE, 1, _normalize([1.0, 1.7, -1.0]), 0.8),
+        Light(LightType.DIFFUSE, 0, np.array([0.0, 1.0, 0.0], dtype=np.float64), 0.45),
+        Light(LightType.DIFFUSE, 0, _normalize([-1.0, 0.85, 1.0]), 0.475),
+        Light(LightType.DIFFUSE, 0, _normalize([0.75, 0.4, -1.0]), 0.6),
+        Light(LightType.DIFFUSE, 0, _normalize([1.0, 0.25, 0.0]), 0.5),
+        Light(LightType.DIFFUSE, 0, _normalize([-1.0, -0.5, 0.0]), 0.1),
     ]
 
 

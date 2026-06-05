@@ -47,7 +47,7 @@ MANIFEST = ADDON / "blender_manifest.toml"
 # pyproject.toml's `openrct2-x7-renderer>=...` dependency.
 RENDERER_DIST = "openrct2-x7-renderer"
 RENDERER_PREFIX = "openrct2_x7_renderer"
-RENDERER_VERSION = "0.1.0"
+RENDERER_VERSION = "0.2.0"
 
 # This repo's pure-Python front-end wheel (built + placed by the caller).
 FRONTEND_PREFIX = "openrct2_scenerygenerator"

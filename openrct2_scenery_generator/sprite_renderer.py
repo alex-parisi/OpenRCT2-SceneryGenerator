@@ -15,10 +15,31 @@ import numpy as np
 from openrct2_x7_renderer.constants import TILE_SIZE
 from openrct2_x7_renderer.geometry import assign_faces_to_tiles, combine_model_world, subset_mesh
 from openrct2_x7_renderer.mesh import Mesh
-from openrct2_x7_renderer.ray_trace import VIEWS, Context, render_view
+from openrct2_x7_renderer.ray_trace import VIEWS, Context, FinalizedScene
 from openrct2_x7_renderer.types import IndexedImage, Model
 
 _IDENTITY3 = np.eye(3, dtype=np.float64)
+
+
+def _render_scene_view(
+    context: Context, mesh: Mesh, translation: np.ndarray, view: np.ndarray
+) -> IndexedImage:
+    """Render a single model under a single view in its own scene. Used by the
+    wall and large-scenery paths, which re-anchor (different `translation`) per
+    view and so cannot share one finalized scene."""
+    with context.begin_render() as scene:
+        with scene.add_model(mesh, _IDENTITY3, translation, 0).finalize() as ready:
+            return ready.render_view(view)
+
+
+def _render_scene_views(
+    context: Context, mesh: Mesh, translation: np.ndarray, views: list[np.ndarray]
+) -> list[IndexedImage]:
+    """Render a single model under several views, sharing one finalized scene
+    (same anchor for every view)."""
+    with context.begin_render() as scene:
+        with scene.add_model(mesh, _IDENTITY3, translation, 0).finalize() as ready:
+            return [ready.render_view(v) for v in views]
 
 # OpenRCT2 anchors large-scenery sprites at the tile's reference CORNER (paint
 # offset {0,0}), not its centre like small scenery ({15,15}). Empirically, the
@@ -54,9 +75,10 @@ def count_small_scenery_sprites(num_rotations: int, num_pose_groups: int = 1) ->
     return num_rotations
 
 
-def render_small_scenery(context: Context, num_rotations: int = 4) -> list[IndexedImage]:
-    """Render the prepared scene under the first `num_rotations` cardinal views."""
-    return [render_view(context, VIEWS[i]) for i in range(num_rotations)]
+def render_small_scenery(scene: FinalizedScene, num_rotations: int = 4) -> list[IndexedImage]:
+    """Render the prepared (finalized) scene under the first `num_rotations`
+    cardinal views."""
+    return [scene.render_view(VIEWS[i]) for i in range(num_rotations)]
 
 
 def _render_pose_rotations(
@@ -65,12 +87,9 @@ def _render_pose_rotations(
     """Bake pose `frame`'s placements and render all 4 cardinal rotations,
     anchored at the tile centre (model origin)."""
     combined = combine_model_world(meshes, model, frame=frame)
-    context.begin_render()
-    context.add_model(combined, _IDENTITY3, np.zeros(3, dtype=np.float64), 0)
-    context.finalize_render()
-    out = [render_view(context, VIEWS[d]) for d in range(4)]
-    context.end_render()
-    return out
+    return _render_scene_views(
+        context, combined, np.zeros(3, dtype=np.float64), [VIEWS[d] for d in range(4)]
+    )
 
 
 def render_small_scenery_animated(
@@ -160,11 +179,7 @@ def _render_wall_pair(
     out: list[IndexedImage] = []
     for v in _WALL_FLAT_VIEWS:
         translation = np.array((0.0, 0.0, view_shift[v]), dtype=np.float64)
-        context.begin_render()
-        context.add_model(mesh, _IDENTITY3, translation, 0)
-        context.finalize_render()
-        out.append(render_view(context, VIEWS[v]))
-        context.end_render()
+        out.append(_render_scene_view(context, mesh, translation, VIEWS[v]))
     return out
 
 
@@ -330,11 +345,7 @@ def _render_4_rotations(
     for d in range(4):
         ox, oz = corners[d]
         translation = np.array([-(cx + ox), 0.0, -(cz + oz)], dtype=np.float64)
-        context.begin_render()
-        context.add_model(mesh, _IDENTITY3, translation, 0)
-        context.finalize_render()
-        out.append(render_view(context, VIEWS[d]))
-        context.end_render()
+        out.append(_render_scene_view(context, mesh, translation, VIEWS[d]))
     return out
 
 

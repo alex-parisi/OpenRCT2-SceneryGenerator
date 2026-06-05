@@ -5,7 +5,7 @@ description = "Author and export OpenRCT2 small/large/wall scenery from meshes (
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "openrct2-x7-renderer>=0.1.0",
+    "openrct2-x7-renderer>=0.2.0",
     "numpy>=1.26",
     "pillow>=10.0",
     "pyyaml>=6.0",

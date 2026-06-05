@@ -38,7 +38,7 @@ ADDON_DIR = REPO / "scenery_addon"
 # External renderer: PyPI dist name, wheel-filename prefix, pinned version.
 RENDERER_DIST = "openrct2-x7-renderer"
 RENDERER_PREFIX = "openrct2_x7_renderer"
-RENDERER_VERSION = "0.1.0"
+RENDERER_VERSION = "0.2.0"
 DEPS = ("numpy", "pillow", "pyyaml")
 
 

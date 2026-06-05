@@ -18,17 +18,7 @@ import os
 import bpy
 import numpy as np
 from mathutils import Matrix, Vector
-from openrct2_x7_renderer.constants import (
-    MATERIAL_BACKGROUND_AA,
-    MATERIAL_BACKGROUND_AA_DARK,
-    MATERIAL_HAS_TEXTURE,
-    MATERIAL_IS_FLAT_SHADED,
-    MATERIAL_IS_MASK,
-    MATERIAL_IS_REMAPPABLE,
-    MATERIAL_IS_VISIBLE_MASK,
-    MATERIAL_NO_AO,
-    MATERIAL_NO_BLEED,
-)
+from openrct2_x7_renderer.constants import MaterialFlag
 from openrct2_x7_renderer.image import quantize_to_indexed, read_png
 from openrct2_x7_renderer.mesh import Material, Mesh, load_texture
 from openrct2_x7_renderer.types import IndexedImage
@@ -38,9 +28,9 @@ _BASIS = Matrix(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0)))
 
 _REGION_MAP = {
     "NONE": (0, 0),
-    "REMAP1": (MATERIAL_IS_REMAPPABLE, 1),
-    "REMAP2": (MATERIAL_IS_REMAPPABLE, 2),
-    "REMAP3": (MATERIAL_IS_REMAPPABLE, 3),
+    "REMAP1": (MaterialFlag.IS_REMAPPABLE, 1),
+    "REMAP2": (MaterialFlag.IS_REMAPPABLE, 2),
+    "REMAP3": (MaterialFlag.IS_REMAPPABLE, 3),
     "GREYSCALE": (0, 4),
     "PEEP": (0, 5),
     "CHAIN": (0, 6),
@@ -98,19 +88,19 @@ def _material_from_bpy(bmat) -> Material:
     m.flags |= flag
     m.region = region
     if s.is_visible_mask:
-        m.flags |= MATERIAL_IS_VISIBLE_MASK
+        m.flags |= MaterialFlag.IS_VISIBLE_MASK
     elif s.is_mask:
-        m.flags |= MATERIAL_IS_MASK
+        m.flags |= MaterialFlag.IS_MASK
     if s.no_ao:
-        m.flags |= MATERIAL_NO_AO
+        m.flags |= MaterialFlag.NO_AO
     if s.edge:
-        m.flags |= MATERIAL_BACKGROUND_AA
+        m.flags |= MaterialFlag.BACKGROUND_AA
     if s.dark_edge:
-        m.flags |= MATERIAL_BACKGROUND_AA_DARK
+        m.flags |= MaterialFlag.BACKGROUND_AA_DARK
     if s.no_bleed:
-        m.flags |= MATERIAL_NO_BLEED
+        m.flags |= MaterialFlag.NO_BLEED
     if s.flat_shaded:
-        m.flags |= MATERIAL_IS_FLAT_SHADED
+        m.flags |= MaterialFlag.IS_FLAT_SHADED
 
     # Wall-only classification (ignored by every other path): the glass overlay
     # split and the double-sided front/back split. Mirrors the MTL *Glass* /
@@ -125,7 +115,7 @@ def _material_from_bpy(bmat) -> Material:
         path = bpy.path.abspath(s.texture.filepath_from_user() or s.texture.filepath)
         if path and os.path.exists(path):
             m.texture = load_texture(path)
-            m.flags |= MATERIAL_HAS_TEXTURE
+            m.flags |= MaterialFlag.HAS_TEXTURE
     return m
 
 

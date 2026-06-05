@@ -3,7 +3,6 @@ object.json shape. The native renderer is stubbed so this runs without Embree.""
 
 import numpy as np
 import pytest
-from openrct2_scenery_generator import sprite_renderer
 from openrct2_scenery_generator.exporter import build_small_scenery_json
 from openrct2_scenery_generator.loader import LoadError, build_small_scenery
 from openrct2_scenery_generator.sprite_renderer import (
@@ -13,19 +12,56 @@ from openrct2_scenery_generator.sprite_renderer import (
 from openrct2_x7_renderer.types import IndexedImage
 
 
-@pytest.fixture
-def stub_render(monkeypatch):
-    def fake_render_view(_context, _view):
-        return IndexedImage(1, 1, 0, 0, np.zeros((1, 1), dtype=np.uint8))
+def _stub_image() -> IndexedImage:
+    return IndexedImage(1, 1, 0, 0, np.zeros((1, 1), dtype=np.uint8))
 
-    monkeypatch.setattr(sprite_renderer, "render_view", fake_render_view)
+
+class _FakeScene:
+    """Stands in for FinalizedScene: every render returns a 1x1 dummy sprite, so
+    sprite-count tests run without Embree."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_a):
+        return False
+
+    def render_view(self, _view):
+        return _stub_image()
+
+    def render_silhouette(self, _view):
+        return _stub_image()
+
+    def end_render(self):
+        pass
+
+
+class _FakeBuilder:
+    """Stands in for SceneBuilder."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_a):
+        return False
+
+    def add_model(self, *_a, **_k):
+        return self
+
+    def finalize(self):
+        return _FakeScene()
+
+
+class _FakeContext:
+    def begin_render(self):
+        return _FakeBuilder()
 
 
 @pytest.mark.parametrize("rotatable,expected", [(True, 4), (False, 1)])
-def test_count_matches_render(stub_render, rotatable, expected):
+def test_count_matches_render(rotatable, expected):
     num = 4 if rotatable else 1
     assert count_small_scenery_sprites(num) == expected
-    assert len(render_small_scenery(context=None, num_rotations=num)) == expected
+    assert len(render_small_scenery(_FakeScene(), num_rotations=num)) == expected
 
 
 def _make_scenery(tmp_path, **overrides):
@@ -125,7 +161,7 @@ def test_animated_json_shape(tmp_path):
     assert props["SMALL_SCENERY_FLAG_VISIBLE_WHEN_ZOOMED"] is True
 
 
-def test_animated_render_order_and_count(stub_render, tmp_path):
+def test_animated_render_order_and_count(tmp_path):
     from openrct2_scenery_generator.sprite_renderer import render_small_scenery_animated
 
     obj = _make_animated(tmp_path, poses=3)
@@ -172,20 +208,6 @@ from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
     render_large_scenery,
 )
 from openrct2_x7_renderer.geometry import combine_model_world  # noqa: E402
-
-
-class _FakeContext:
-    def begin_render(self):
-        pass
-
-    def add_model(self, *a, **k):
-        pass
-
-    def finalize_render(self):
-        pass
-
-    def end_render(self):
-        pass
 
 
 @pytest.mark.parametrize("tiles,expected", [(1, 8), (2, 12), (4, 20)])
@@ -242,7 +264,7 @@ def test_glass_material_classified(tmp_path):
         (False, True, True, 12),
     ],
 )
-def test_wall_count_matches_render(stub_render, tmp_path, glass, double, slope, expected):
+def test_wall_count_matches_render(tmp_path, glass, double, slope, expected):
     from openrct2_x7_renderer.geometry import combine_model_world
 
     obj = _make_wall(tmp_path, glass=glass, is_double_sided=double, is_allowed_on_slope=slope)
@@ -286,7 +308,7 @@ def test_front_back_material_classified(tmp_path):
     assert by_side == {(False, False), (True, False), (False, True)}
 
 
-def test_double_sided_blocks_exclude_opposite_side(stub_render, tmp_path, monkeypatch):
+def test_double_sided_blocks_exclude_opposite_side(tmp_path, monkeypatch):
     # The front block must drop Back faces and the back block must drop Front
     # faces (shared Frame survives both). Capture each block's face count.
     from openrct2_scenery_generator import sprite_renderer as sr
@@ -351,7 +373,7 @@ def test_large_json_shape(tmp_path):
     assert props["hasPrimaryColour"] is True
 
 
-def test_large_render_order_and_count(stub_render, tmp_path):
+def test_large_render_order_and_count(tmp_path):
     obj = _make_large(tmp_path, ntiles=2)
     combined = combine_model_world(obj.meshes, obj.model)
     import numpy as np

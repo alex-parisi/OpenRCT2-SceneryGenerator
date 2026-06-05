@@ -49,23 +49,22 @@ def _load_model(value: Any, num_meshes: int) -> Model:
     for elem in arr:
         if not isinstance(elem, dict):
             raise LoadError('Property "model" is not an object')
-        frame = MeshFrame()
 
         mi = elem.get("mesh_index")
         if not isinstance(mi, int) or isinstance(mi, bool):
             raise LoadError('Property "mesh_index" not found or is not an integer')
         if mi >= num_meshes or mi < -1:
             raise LoadError(f"Mesh index {mi} is out of bounds")
-        frame.mesh_index = int(mi)
 
+        # MeshFrame is a frozen dataclass, so collect its fields and construct it
+        # once (position/orientation default to zero vectors when absent).
+        kwargs: dict[str, Any] = {"mesh_index": int(mi)}
         for key in ("position", "orientation"):
             prop = elem.get(key)
-            if prop is None:
-                continue  # MeshFrame defaults to a zero vector
-            frame_val = read_vector3(prop)
-            setattr(frame, key, frame_val)
+            if prop is not None:
+                kwargs[key] = read_vector3(prop)
 
-        meshes_out.append([frame])
+        meshes_out.append([MeshFrame(**kwargs)])
     return Model(meshes=meshes_out)
 
 

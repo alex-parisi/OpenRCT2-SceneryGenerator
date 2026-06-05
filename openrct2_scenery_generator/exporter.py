@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from openrct2_x7_renderer.geometry import combine_model_world
+from openrct2_x7_renderer.geometry import combine_model_world, rotate_x, rotate_y, rotate_z
 from openrct2_x7_renderer.image import write_png
 from openrct2_x7_renderer.images_dat import write_images_dat
-from openrct2_x7_renderer.ray_trace import VIEWS, Context, render_view, rotate_x, rotate_y, rotate_z
+from openrct2_x7_renderer.ray_trace import VIEWS, Context, SceneBuilder
 
 from .constants import COORDS_PER_TILE, SCROLLING_MODE_NONE
 from .sprite_renderer import (
@@ -24,8 +24,8 @@ from .sprite_renderer import (
 from .types import LargeScenery, SmallScenery, WallScenery
 
 
-def _add_model_to_context(
-    obj: SmallScenery | WallScenery, context: Context, frame: int = 0
+def _add_model_to_scene(
+    obj: SmallScenery | WallScenery, scene: SceneBuilder, frame: int = 0
 ) -> None:
     """Add the scenery's placed meshes to the open scene at the given pose
     frame (default 0 = the static/first pose)."""
@@ -36,7 +36,7 @@ def _add_model_to_context(
         rx, ry, rz = mf.orientation * math.pi / 180.0
         matrix = rotate_y(rx) @ rotate_z(ry) @ rotate_x(rz)
         translation = mf.position.astype(np.float64)
-        context.add_model(obj.meshes[mf.mesh_index], matrix, translation, 0)
+        scene.add_model(obj.meshes[mf.mesh_index], matrix, translation, 0)
 
 
 def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
@@ -87,11 +87,10 @@ def _render_sprites(obj: SmallScenery, context: Context, object_dir: Path) -> li
             context, obj.meshes, obj.model, obj.num_pose_groups
         )
     else:
-        context.begin_render()
-        _add_model_to_context(obj, context)
-        context.finalize_render()
-        images = render_small_scenery(context, num_rotations=obj.num_rotations)
-        context.end_render()
+        with context.begin_render() as scene:
+            _add_model_to_scene(obj, scene)
+            with scene.finalize() as ready:
+                images = render_small_scenery(ready, num_rotations=obj.num_rotations)
 
     out_path = object_dir / "images.dat"
     write_images_dat(images, out_path)
@@ -165,13 +164,12 @@ def export_small_scenery_test(
             for d in range(4):
                 write_png(images[4 + g * 4 + d], test_dir / f"pose{g}_{d}.png")
         return
-    context.begin_render()
-    _add_model_to_context(obj, context)
-    context.finalize_render()
-    for i in range(obj.num_rotations):
-        img = render_view(context, VIEWS[i])
-        write_png(img, test_dir / f"scenery_{i}.png")
-    context.end_render()
+    with context.begin_render() as scene:
+        _add_model_to_scene(obj, scene)
+        with scene.finalize() as ready:
+            for i in range(obj.num_rotations):
+                img = ready.render_view(VIEWS[i])
+                write_png(img, test_dir / f"scenery_{i}.png")
 
 
 # ---------------------------------------------------------------------------
