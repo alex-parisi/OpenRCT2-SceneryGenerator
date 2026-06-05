@@ -12,7 +12,7 @@ produces a single-platform zip you can install into your local Blender right now
   3. Stage the add-on with a local-only manifest (just this platform + these
      wheels) and run `blender --command extension build`.
 
-The committed scenery_addon/wheels/ and blender_manifest.toml are never touched;
+The committed scenery_renderer_addon/wheels/ and blender_manifest.toml are never touched;
 everything is staged in a temp dir.
 
 macOS only for now (the platform/arch mapping below covers macOS). For a
@@ -33,7 +33,7 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-ADDON_DIR = REPO / "scenery_addon"
+ADDON_DIR = REPO / "scenery_renderer_addon"
 
 # External renderer: PyPI dist name, wheel-filename prefix, pinned version.
 RENDERER_DIST = "openrct2-x7-renderer"

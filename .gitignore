@@ -1,5 +1,5 @@
 # Bundled wheels staged for the Blender add-on (downloaded; not committed)
-scenery_addon/wheels/
+scenery_renderer_addon/wheels/
 
 uv.lock
 .idea/

@@ -16,11 +16,11 @@ The add-on bundles three kinds of wheel:
      specific; downloaded from PyPI.
   3. The front-end wheel (``openrct2_scenerygenerator``): this repo, now
      pure-Python (``py3-none-any``, one wheel for every target). Built separately
-     with ``uv build --wheel`` and placed in ``scenery_addon/wheels/`` before this
+     with ``uv build --wheel`` and placed in ``scenery_renderer_addon/wheels/`` before this
      runs.
 
 This script downloads (1) and (2) for all targets, then rewrites the manifest's
-``wheels = [...]`` to list every wheel present in ``scenery_addon/wheels/``
+``wheels = [...]`` to list every wheel present in ``scenery_renderer_addon/wheels/``
 (including the pre-placed front-end wheel).
 
 Run from the repo root (pip must be importable):
@@ -38,7 +38,7 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-ADDON = REPO / "scenery_addon"
+ADDON = REPO / "scenery_renderer_addon"
 WHEELS = ADDON / "wheels"
 MANIFEST = ADDON / "blender_manifest.toml"
 

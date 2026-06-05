@@ -56,7 +56,7 @@ select = ["E", "F", "I", "UP", "B", "W", "N"]
 # Blender mandates operator/UIList/panel class names like `SG_OT_name`,
 # `SG_UL_name`, `SG_PT_name` (and matching bpy var names), which trip
 # pep8-naming. They can't be renamed without breaking add-on registration.
-"scenery_addon/*" = ["N801", "N802", "N806"]
+"scenery_renderer_addon/*" = ["N801", "N802", "N806"]
 
 [tool.mypy]
 python_version = "3.11"

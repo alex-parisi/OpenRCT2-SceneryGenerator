@@ -1,4 +1,4 @@
-# scenery_addon
+# scenery_renderer_addon
 
 The Blender 4.2+ add-on (extension). It is the UI + scene adapter only: the
 whole pipeline (config validation, rendering, `.parkobj` assembly) lives in the
@@ -91,7 +91,7 @@ triggered manually or on a `v*` tag.
 ## Source layout
 
 ```
-scenery_addon/
+scenery_renderer_addon/
 ├── __init__.py            # register/unregister (props -> operators -> panels)
 ├── blender_manifest.toml  # extension manifest (id, version, platforms, wheels)
 ├── props.py               # PropertyGroups: scene/object/material data + tile/light lists

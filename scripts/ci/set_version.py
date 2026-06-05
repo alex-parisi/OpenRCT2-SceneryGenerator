@@ -17,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 TARGETS = [
     ROOT / "pyproject.toml",
-    ROOT / "scenery_addon" / "blender_manifest.toml",
+    ROOT / "scenery_renderer_addon" / "blender_manifest.toml",
 ]
 # Match the first top-level `version = "..."` assignment in each file.
 PATTERN = re.compile(r'^version\s*=\s*"[^"]*"', re.MULTILINE)
