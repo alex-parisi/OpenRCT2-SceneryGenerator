@@ -2,18 +2,19 @@
 Build object.json and assemble the scenery .parkobj ZIP.
 """
 
-import json
+import logging
 import math
-import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from openrct2_x7_renderer.geometry import combine_model_world, rotate_x, rotate_y, rotate_z
+from openrct2_object_common.objectjson import object_json_header
+from openrct2_object_common.parkobj import assemble_parkobj, write_images_dat_lgx
+from openrct2_object_common.placement import add_model_to_scene
+from openrct2_x7_renderer.geometry import combine_model_world
 from openrct2_x7_renderer.image import write_png
-from openrct2_x7_renderer.images_dat import write_images_dat
-from openrct2_x7_renderer.ray_trace import VIEWS, Context, SceneBuilder
+from openrct2_x7_renderer.ray_trace import VIEWS, Context
 from openrct2_x7_renderer.types import IndexedImage
 
 from .constants import COORDS_PER_TILE, SCROLLING_MODE_NONE
@@ -25,24 +26,11 @@ from .sprite_renderer import (
 )
 from .types import LargeScenery, SmallScenery, WallScenery
 
+log = logging.getLogger(__name__)
+
 Scenery = SmallScenery | LargeScenery | WallScenery
 # (obj, context, work_dir) -> the object.json "images" list.
 RenderSprites = Callable[[Any, Context, Path], list[str]]
-
-
-def _add_model_to_scene(
-    obj: SmallScenery | WallScenery, scene: SceneBuilder, frame: int = 0
-) -> None:
-    """Add the scenery's placed meshes to the open scene at the given pose
-    frame (default 0 = the static/first pose)."""
-    for mesh_frames in obj.model.meshes:
-        mf = mesh_frames[min(frame, len(mesh_frames) - 1)]
-        if mf.mesh_index == -1:
-            continue
-        rx, ry, rz = mf.orientation * math.pi / 180.0
-        matrix = rotate_y(rx) @ rotate_z(ry) @ rotate_x(rz)
-        translation = mf.position.astype(np.float64)
-        scene.add_model(obj.meshes[mf.mesh_index], matrix, translation, 0)
 
 
 def combine_indexed_images(images: list[IndexedImage], columns: int = 2) -> IndexedImage:
@@ -79,12 +67,13 @@ def combine_indexed_images(images: list[IndexedImage], columns: int = 2) -> Inde
 
 
 def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
-    out: dict[str, Any] = {"id": obj.id}
-    if obj.original_id:
-        out["originalId"] = obj.original_id
-    out["version"] = obj.version
-    out["authors"] = list(obj.authors)
-    out["objectType"] = "scenery_small"
+    out = object_json_header(
+        obj.id,
+        object_type="scenery_small",
+        original_id=obj.original_id,
+        version=obj.version,
+        authors=obj.authors,
+    )
 
     properties: dict[str, Any] = {
         "price": obj.price,
@@ -127,20 +116,11 @@ def _render_sprites(obj: SmallScenery, context: Context, object_dir: Path) -> li
         )
     else:
         with context.begin_render() as scene:
-            _add_model_to_scene(obj, scene)
+            add_model_to_scene(scene, obj.meshes, obj.model, clamp_frame=True)
             with scene.finalize() as ready:
                 images = render_small_scenery(ready, num_rotations=obj.num_rotations)
 
-    out_path = object_dir / "images.dat"
-    write_images_dat(images, out_path)
-    print(f"wrote {out_path} ({len(images)} sprites, {out_path.stat().st_size / 1024:.1f} KB)")
-    return [f"$LGX:images.dat[0..{len(images) - 1}]"]
-
-
-def _make_parkobj(object_dir: Path, output_path: Path) -> None:
-    with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.write(object_dir / "object.json", "object.json")
-        zf.write(object_dir / "images.dat", "images.dat")
+    return write_images_dat_lgx(images, object_dir)
 
 
 def _export_scenery(
@@ -155,25 +135,13 @@ def _export_scenery(
     """Render the sprites (or reuse a previous render) and zip object.json +
     images.dat into the parkobj. Shared by all three scenery kinds; they differ
     only in `obj_json` (the built metadata) and `render_sprites`."""
-    parkobj_path = Path(parkobj_path)
-    work_dir = Path(work_dir)
-    work_dir.mkdir(parents=True, exist_ok=True)
-
-    if skip_render:
-        prev = json.loads((work_dir / "object.json").read_text())
-        images_json = prev.get("images")
-        if not isinstance(images_json, list):
-            raise RuntimeError('Property "images" is not an array')
-    else:
-        for p in (work_dir / "object.json", work_dir / "images.dat"):
-            p.unlink(missing_ok=True)
-        images_json = render_sprites(obj, context, work_dir)
-
-    obj_json["images"] = images_json
-    (work_dir / "object.json").write_text(json.dumps(obj_json, indent=4))
-
-    parkobj_path.parent.mkdir(parents=True, exist_ok=True)
-    _make_parkobj(work_dir, parkobj_path)
+    assemble_parkobj(
+        obj_json,
+        Path(parkobj_path),
+        Path(work_dir),
+        lambda wd: render_sprites(obj, context, wd),
+        skip_render=skip_render,
+    )
 
 
 def export_small_scenery_to(
@@ -222,7 +190,7 @@ def export_small_scenery_test(
         return
     rotations: list[IndexedImage] = []
     with context.begin_render() as scene:
-        _add_model_to_scene(obj, scene)
+        add_model_to_scene(scene, obj.meshes, obj.model, clamp_frame=True)
         with scene.finalize() as ready:
             for i in range(obj.num_rotations):
                 img = ready.render_view(VIEWS[i])
@@ -247,12 +215,13 @@ def _tile_centers_xz(obj: LargeScenery) -> np.ndarray:
 
 
 def build_large_scenery_json(obj: LargeScenery) -> dict[str, Any]:
-    out: dict[str, Any] = {"id": obj.id}
-    if obj.original_id:
-        out["originalId"] = obj.original_id
-    out["version"] = obj.version
-    out["authors"] = list(obj.authors)
-    out["objectType"] = "scenery_large"
+    out = object_json_header(
+        obj.id,
+        object_type="scenery_large",
+        original_id=obj.original_id,
+        version=obj.version,
+        authors=obj.authors,
+    )
 
     properties: dict[str, Any] = {
         "price": obj.price,
@@ -300,13 +269,7 @@ def _render_large_sprites(obj: LargeScenery, context: Context, object_dir: Path)
     combined = combine_model_world(obj.meshes, obj.model)
     centers = _tile_centers_xz(obj)
     images = render_large_scenery(context, combined, centers, obj.units_per_tile)
-    out_path = object_dir / "images.dat"
-    write_images_dat(images, out_path)
-    print(
-        f"wrote {out_path} ({len(images)} sprites for {obj.num_tiles} tiles, "
-        f"{out_path.stat().st_size / 1024:.1f} KB)"
-    )
-    return [f"$LGX:images.dat[0..{len(images) - 1}]"]
+    return write_images_dat_lgx(images, object_dir, note=f" for {obj.num_tiles} tiles")
 
 
 def export_large_scenery_to(
@@ -359,12 +322,13 @@ def export_large_scenery_test(
 
 
 def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
-    out: dict[str, Any] = {"id": obj.id}
-    if obj.original_id:
-        out["originalId"] = obj.original_id
-    out["version"] = obj.version
-    out["authors"] = list(obj.authors)
-    out["objectType"] = "scenery_wall"
+    out = object_json_header(
+        obj.id,
+        object_type="scenery_wall",
+        original_id=obj.original_id,
+        version=obj.version,
+        authors=obj.authors,
+    )
 
     properties: dict[str, Any] = {
         "price": obj.price,
@@ -378,7 +342,7 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
     # double-sided.
     double_sided = obj.is_double_sided
     if double_sided and obj.has_glass:
-        print("warning: glass + isDoubleSided combo is unsupported; ignoring isDoubleSided")
+        log.warning("glass + isDoubleSided combo is unsupported; ignoring isDoubleSided")
         double_sided = False
 
     # Emit only the flags that are set (OpenRCT2 treats absent as false; for the
@@ -422,10 +386,7 @@ def _render_wall_sprites(obj: WallScenery, context: Context, object_dir: Path) -
         obj.units_per_tile,
     )
 
-    out_path = object_dir / "images.dat"
-    write_images_dat(images, out_path)
-    print(f"wrote {out_path} ({len(images)} sprites, {out_path.stat().st_size / 1024:.1f} KB)")
-    return [f"$LGX:images.dat[0..{len(images) - 1}]"]
+    return write_images_dat_lgx(images, object_dir)
 
 
 def export_wall_scenery_to(

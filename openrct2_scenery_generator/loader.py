@@ -5,7 +5,7 @@ Load a scenery config (JSON or YAML) into a SmallScenery dataclass.
 from pathlib import Path
 from typing import Any
 
-from openrct2_x7_renderer.config import (
+from openrct2_object_common.config import (
     LoadError,
     as_array_or_wrap,
     load_meshes,

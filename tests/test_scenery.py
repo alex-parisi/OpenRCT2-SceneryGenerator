@@ -333,13 +333,14 @@ def test_double_sided_blocks_exclude_opposite_side(tmp_path, monkeypatch):
     assert seen == [2, 2]
 
 
-def test_glass_double_combo_refused(tmp_path, capsys):
+def test_glass_double_combo_refused(tmp_path, caplog):
     # The +12 glass x double layout is unsupported: keep glass, drop double-sided.
     obj = _make_wall(tmp_path, glass=True, is_double_sided=True)
-    props = build_wall_scenery_json(obj)["properties"]
+    with caplog.at_level("WARNING"):
+        props = build_wall_scenery_json(obj)["properties"]
     assert props.get("hasGlass") is True
     assert "isDoubleSided" not in props
-    assert "combo is unsupported" in capsys.readouterr().out
+    assert "combo is unsupported" in caplog.text
 
 
 def _make_large(tmp_path, ntiles=2, **overrides):

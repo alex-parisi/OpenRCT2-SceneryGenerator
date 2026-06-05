@@ -9,7 +9,8 @@ authors = [
     { name = "Alex Parisi", email = "alex@atparisi.com" }
 ]
 dependencies = [
-    "openrct2-x7-renderer>=0.2.0",
+    "OpenRCT2-ObjectCommon>=0.1.0",
+    "openrct2-x7-renderer>=0.3.0",
     "numpy>=1.26",
     "pillow>=10.0",
     "pyyaml>=6.0",

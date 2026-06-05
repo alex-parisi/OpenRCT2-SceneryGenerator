@@ -15,6 +15,7 @@ import bpy
 import numpy as np
 from bpy.props import StringProperty
 from bpy.types import Operator
+from openrct2_object_common.cli import make_context
 from openrct2_scenery_generator.exporter import (
     export_large_scenery_test,
     export_large_scenery_to,
@@ -28,7 +29,6 @@ from openrct2_scenery_generator.loader import (
     build_small_scenery,
     build_wall_scenery,
 )
-from openrct2_x7_renderer.cli import make_context
 from openrct2_x7_renderer.constants import LightType
 from openrct2_x7_renderer.types import Light
 
