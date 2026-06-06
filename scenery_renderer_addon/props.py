@@ -21,16 +21,23 @@ from bpy.props import (
     StringProperty,
 )
 from bpy.types import Material, Object, PropertyGroup, Scene
+from openrct2_object_common.blender.props import (
+    SCALE_PRESET_ITEMS,
+    SharedLight,
+    scale_preset_update,
+    simple_items,
+    title,
+)
 from openrct2_scenery_generator.constants import DEFAULT_CURSOR, SMALL_SCENERY_SHAPES
 from openrct2_x7_renderer.constants import TILE_SIZE
 
 
 def _title(name: str) -> str:
-    return name.replace("_", " ").title()
+    return title(name)
 
 
 def _simple_items(names):
-    return [(n, _title(n), "") for n in names]
+    return simple_items(names)
 
 
 OBJECT_TYPE_ITEMS = [
@@ -39,24 +46,8 @@ OBJECT_TYPE_ITEMS = [
     ("scenery_wall", "Wall", "Single tile-edge wall panel (modelled along OBJ +Z)"),
 ]
 
-# Render-scale presets (mirrors the vehicle add-on): how many OBJ units span one
-# OpenRCT2 tile. Drives sprite size and the tile-anchor maths.
-SCALE_PRESET_VALUES = {
-    "REALISTIC": TILE_SIZE,
-    "TILE": 1.0,
-}
-SCALE_PRESET_ITEMS = [
-    ("REALISTIC", f"Realistic ({TILE_SIZE:g} m/tile)", "Match RCT2's real-world tile scale"),
-    ("TILE", "1 unit = 1 tile", "Model in tiles: one OBJ unit spans one tile"),
-    ("CUSTOM", "Custom", "Set the units-per-tile value manually"),
-]
-
-
 def _scale_preset_update(self, _context):
-    """Write the preset's units-per-tile into the consumed value (Custom: no-op)."""
-    value = SCALE_PRESET_VALUES.get(self.scale_preset)
-    if value is not None:
-        self.units_per_tile = value
+    scale_preset_update(self, _context)
 
 # Per-material role on a double-sided wall. Mirrors the MTL name classification
 # (*Front* / *Back*) the CLI path uses, exposed as an explicit picker. Untagged
@@ -120,10 +111,6 @@ MATERIAL_REGION_ITEMS = [
     ("CHAIN", "Chain", "Chain region"),
 ]
 
-LIGHT_TYPE_ITEMS = [
-    ("diffuse", "Diffuse", "Directional diffuse light"),
-    ("specular", "Specular", "Specular highlight light"),
-]
 
 # Animation cycle length = number of ticks the engine steps through before
 # looping. The engine masks the tick counter with `mask = cycle - 1`, so the
@@ -261,17 +248,7 @@ class VGSTile(PropertyGroup):
     )
 
 
-class VGSLight(PropertyGroup):
-    type: EnumProperty(name="Type", items=LIGHT_TYPE_ITEMS, default="diffuse")
-    shadow: BoolProperty(name="Casts Shadow", default=False)
-    direction: FloatVectorProperty(
-        name="Direction",
-        description="Direction in OBJ space (+X forward, +Y up, +Z right); normalized at render",
-        size=3,
-        default=(0.0, 1.0, 0.0),
-        subtype="XYZ",
-    )
-    strength: FloatProperty(name="Strength", default=0.5, min=0.0)
+VGSLight = SharedLight
 
 
 class VGSScenerySettings(PropertyGroup):

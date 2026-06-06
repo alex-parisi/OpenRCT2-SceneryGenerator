@@ -125,3 +125,20 @@ def test_main_end_to_end_through_run_cli(monkeypatch, tmp_path):
 
     assert cli.main([str(cfg)]) == 0
     assert calls["ran"] is True
+
+
+def test_dunder_main_guard_invokes_sys_exit(monkeypatch):
+    # Cover the `sys.exit(main())` body inside `if __name__ == "__main__":`.
+    import runpy
+    import sys
+
+    exits = []
+    monkeypatch.setattr(sys, "exit", exits.append)
+
+    import openrct2_object_common.cli as _cli
+    monkeypatch.setattr(_cli, "run_cli", lambda prog, argv, render: 5)
+
+    sys.modules.pop("openrct2_scenery_generator.__main__", None)
+    runpy.run_module("openrct2_scenery_generator", run_name="__main__")
+
+    assert exits == [5]

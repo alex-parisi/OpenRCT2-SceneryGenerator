@@ -3,14 +3,18 @@ Build object.json and assemble the scenery .parkobj ZIP.
 """
 
 import logging
-import math
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 from openrct2_object_common.objectjson import object_json_header
-from openrct2_object_common.parkobj import assemble_parkobj, write_images_dat_lgx
+from openrct2_object_common.parkobj import (
+    assemble_parkobj,
+    combine_indexed_images,
+    write_images_dat_lgx,
+)
 from openrct2_object_common.placement import add_model_to_scene
 from openrct2_x7_renderer.geometry import combine_model_world
 from openrct2_x7_renderer.image import write_png
@@ -29,41 +33,9 @@ from .types import LargeScenery, SmallScenery, WallScenery
 log = logging.getLogger(__name__)
 
 Scenery = SmallScenery | LargeScenery | WallScenery
-# (obj, context, work_dir) -> the object.json "images" list.
-RenderSprites = Callable[[Any, Context, Path], list[str]]
-
-
-def combine_indexed_images(images: list[IndexedImage], columns: int = 2) -> IndexedImage:
-    """Tile IndexedImages into a single grid image, aligned by draw offset.
-
-    Each cell spans the union of every image's draw-offset bounding box, so a
-    shared sprite anchor lands at the same spot in every cell and the rotated
-    views line up. Cells fill left-to-right, top-to-bottom over a transparent
-    (palette index 0) background; ``columns`` is capped at the image count so a
-    single image doesn't leave a blank cell. Used to show all four rotated
-    preview directions in one image.
-    """
-    if not images:
-        return IndexedImage.blank(1, 1)
-    columns = max(1, min(columns, len(images)))
-    left = min(im.x_offset for im in images)
-    top = min(im.y_offset for im in images)
-    cell_w = max(im.x_offset + im.width for im in images) - left
-    cell_h = max(im.y_offset + im.height for im in images) - top
-    rows = math.ceil(len(images) / columns)
-    canvas = np.zeros((rows * cell_h, columns * cell_w), dtype=np.uint8)
-    for idx, im in enumerate(images):
-        row, col = divmod(idx, columns)
-        x = col * cell_w + (im.x_offset - left)
-        y = row * cell_h + (im.y_offset - top)
-        canvas[y : y + im.height, x : x + im.width] = im.pixels
-    return IndexedImage(
-        width=canvas.shape[1],
-        height=canvas.shape[0],
-        x_offset=0,
-        y_offset=0,
-        pixels=canvas,
-    )
+ProgressFn = Callable[[int, int], None]
+# (obj, context, work_dir, progress) -> the object.json "images" list.
+RenderSprites = Callable[[Any, Context, Path, ProgressFn | None], list[str]]
 
 
 def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
@@ -109,16 +81,23 @@ def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
     return out
 
 
-def _render_sprites(obj: SmallScenery, context: Context, object_dir: Path) -> list[str]:
+def _render_sprites(
+    obj: SmallScenery,
+    context: Context,
+    object_dir: Path,
+    progress: ProgressFn | None = None,
+) -> list[str]:
     if obj.is_animated:
         images = render_small_scenery_animated(
-            context, obj.meshes, obj.model, obj.num_pose_groups
+            context, obj.meshes, obj.model, obj.num_pose_groups, progress
         )
     else:
         with context.begin_render() as scene:
             add_model_to_scene(scene, obj.meshes, obj.model, clamp_frame=True)
             with scene.finalize() as ready:
-                images = render_small_scenery(ready, num_rotations=obj.num_rotations)
+                images = render_small_scenery(
+                    ready, num_rotations=obj.num_rotations, progress=progress
+                )
 
     return write_images_dat_lgx(images, object_dir)
 
@@ -131,6 +110,7 @@ def _export_scenery(
     obj_json: dict[str, Any],
     render_sprites: RenderSprites,
     skip_render: bool = False,
+    progress: ProgressFn | None = None,
 ) -> None:
     """Render the sprites (or reuse a previous render) and zip object.json +
     images.dat into the parkobj. Shared by all three scenery kinds; they differ
@@ -139,7 +119,7 @@ def _export_scenery(
         obj_json,
         Path(parkobj_path),
         Path(work_dir),
-        lambda wd: render_sprites(obj, context, wd),
+        lambda wd: render_sprites(obj, context, wd, progress),
         skip_render=skip_render,
     )
 
@@ -150,10 +130,11 @@ def export_small_scenery_to(
     parkobj_path: Path | str,
     work_dir: Path | str,
     skip_render: bool = False,
+    progress: ProgressFn | None = None,
 ) -> None:
     _export_scenery(
         obj, context, parkobj_path, work_dir,
-        build_small_scenery_json(obj), _render_sprites, skip_render,
+        build_small_scenery_json(obj), _render_sprites, skip_render, progress,
     )
 
 
@@ -205,7 +186,7 @@ def export_small_scenery_test(
 # ---------------------------------------------------------------------------
 
 
-def _tile_centers_xz(obj: LargeScenery) -> np.ndarray:
+def _tile_centers_xz(obj: LargeScenery) -> NDArray[np.float64]:
     """Tile centres in OBJ horizontal (X, Z) units (1 tile = units_per_tile
     units). OpenRCT2 tile x -> OBJ X, tile y -> OBJ Z."""
     if not obj.tiles:
@@ -265,10 +246,15 @@ def build_large_scenery_json(obj: LargeScenery) -> dict[str, Any]:
     return out
 
 
-def _render_large_sprites(obj: LargeScenery, context: Context, object_dir: Path) -> list[str]:
+def _render_large_sprites(
+    obj: LargeScenery,
+    context: Context,
+    object_dir: Path,
+    progress: ProgressFn | None = None,
+) -> list[str]:
     combined = combine_model_world(obj.meshes, obj.model)
     centers = _tile_centers_xz(obj)
-    images = render_large_scenery(context, combined, centers, obj.units_per_tile)
+    images = render_large_scenery(context, combined, centers, obj.units_per_tile, progress)
     return write_images_dat_lgx(images, object_dir, note=f" for {obj.num_tiles} tiles")
 
 
@@ -278,10 +264,11 @@ def export_large_scenery_to(
     parkobj_path: Path | str,
     work_dir: Path | str,
     skip_render: bool = False,
+    progress: ProgressFn | None = None,
 ) -> None:
     _export_scenery(
         obj, context, parkobj_path, work_dir,
-        build_large_scenery_json(obj), _render_large_sprites, skip_render,
+        build_large_scenery_json(obj), _render_large_sprites, skip_render, progress,
     )
 
 
@@ -373,7 +360,12 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
     return out
 
 
-def _render_wall_sprites(obj: WallScenery, context: Context, object_dir: Path) -> list[str]:
+def _render_wall_sprites(
+    obj: WallScenery,
+    context: Context,
+    object_dir: Path,
+    progress: ProgressFn | None = None,
+) -> list[str]:
     # Flat (2) + slope (4 more); +6 for the glass overlay or the double-sided
     # back block.
     combined = combine_model_world(obj.meshes, obj.model)
@@ -385,7 +377,8 @@ def _render_wall_sprites(obj: WallScenery, context: Context, object_dir: Path) -
         obj.is_double_sided,
         obj.units_per_tile,
     )
-
+    if progress is not None:
+        progress(1, 1)
     return write_images_dat_lgx(images, object_dir)
 
 
@@ -395,10 +388,11 @@ def export_wall_scenery_to(
     parkobj_path: Path | str,
     work_dir: Path | str,
     skip_render: bool = False,
+    progress: ProgressFn | None = None,
 ) -> None:
     _export_scenery(
         obj, context, parkobj_path, work_dir,
-        build_wall_scenery_json(obj), _render_wall_sprites, skip_render,
+        build_wall_scenery_json(obj), _render_wall_sprites, skip_render, progress,
     )
 
 

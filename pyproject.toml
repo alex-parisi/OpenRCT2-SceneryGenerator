@@ -62,14 +62,10 @@ select = ["E", "F", "I", "UP", "B", "W", "N"]
 [tool.mypy]
 python_version = "3.11"
 files = ["openrct2_scenery_generator"]
+strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
-
-# openrct2-x7-renderer ships no py.typed marker, so mypy can't resolve its types.
-[[tool.mypy.overrides]]
-module = ["openrct2_x7_renderer.*"]
-ignore_missing_imports = true
 
 [build-system]
 requires = ["hatchling"]

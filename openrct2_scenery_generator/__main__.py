@@ -8,7 +8,7 @@ import argparse
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from openrct2_object_common.cli import make_context, output_directory_of, run_cli
 from openrct2_x7_renderer.types import Light
@@ -48,7 +48,7 @@ _DISPATCH: dict[str, tuple[_Loader, _Exporter, _Exporter]] = {
 }
 
 
-def _render(args: argparse.Namespace, root: dict, lights: list[Light]) -> None:
+def _render(args: argparse.Namespace, root: dict[str, Any], lights: list[Light]) -> None:
     load, export, export_test = _DISPATCH[object_type_of(root)]
     obj = load(args.input)
     context = make_context(lights, obj.units_per_tile, args.test)

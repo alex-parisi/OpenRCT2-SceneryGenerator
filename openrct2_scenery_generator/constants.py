@@ -3,6 +3,8 @@ Scenery-specific constants. Shared rendering constants live in
 openrct2_x7_renderer.constants.
 """
 
+from openrct2_x7_renderer.constants import TILE_SIZE as TILE_SIZE  # noqa: F401
+
 # Small-scenery footprint shapes, as accepted by OpenRCT2's object.json
 # `properties.shape`. "n/4" is the number of occupied tile quadrants; "+D"
 # marks a full-tile diagonal variant.

@@ -3,11 +3,16 @@ Scenery dataclasses. Rendering primitives (Model, MeshFrame, IndexedImage,
 Light) come from openrct2_x7_renderer.types.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING
 
 from openrct2_x7_renderer.constants import TILE_SIZE
 from openrct2_x7_renderer.types import IndexedImage, Model
+
+if TYPE_CHECKING:
+    from openrct2_x7_renderer.mesh import Mesh
 
 from .constants import (
     DEFAULT_CURSOR,
@@ -62,7 +67,7 @@ class SmallScenery:
     # Geometry: meshes + a Model placing them on the tile. For static scenery
     # each mesh entry has a single MeshFrame; for animated scenery each entry
     # has `num_pose_groups` frames (one per pose).
-    meshes: list[Any] = field(default_factory=list)  # list[Mesh]
+    meshes: list[Mesh] = field(default_factory=list)
     model: Model = field(default_factory=Model)
 
     preview: IndexedImage | None = None
@@ -119,7 +124,7 @@ class LargeScenery:
 
     tiles: list[LargeSceneryTile] = field(default_factory=list)
 
-    meshes: list[Any] = field(default_factory=list)  # list[Mesh]
+    meshes: list[Mesh] = field(default_factory=list)
     model: Model = field(default_factory=Model)
 
     preview: IndexedImage | None = None
@@ -161,7 +166,7 @@ class WallScenery:
     is_opaque: bool = False
     door_sound: int | None = None
 
-    meshes: list[Any] = field(default_factory=list)  # list[Mesh]
+    meshes: list[Mesh] = field(default_factory=list)
     model: Model = field(default_factory=Model)
 
     preview: IndexedImage | None = None

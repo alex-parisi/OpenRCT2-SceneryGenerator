@@ -16,15 +16,16 @@ import math
 import os
 
 import bpy
-import numpy as np
-from mathutils import Matrix, Vector
+from openrct2_object_common.blender.mesh_extract import (
+    BASIS,
+    SceneError,
+    extract_mesh,
+    load_preview,
+    material_base,
+    object_position,
+)
 from openrct2_x7_renderer.constants import MaterialFlag
-from openrct2_x7_renderer.image import quantize_to_indexed, read_png
 from openrct2_x7_renderer.mesh import Material, Mesh, load_texture
-from openrct2_x7_renderer.types import IndexedImage
-
-# Blender (x, y, z) -> OBJ (x, z, -y).
-_BASIS = Matrix(((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0)))
 
 _REGION_MAP = {
     "NONE": (0, 0),
@@ -37,74 +38,19 @@ _REGION_MAP = {
 }
 
 
-class SceneError(Exception):
-    """Raised when the scene can't be turned into a valid scenery object."""
-
-
-def _base_color(bmat) -> tuple[float, float, float]:
-    """The material's flat RGB colour.
-
-    Prefer the Principled BSDF ``Base Color`` (what users set in the shader
-    editor) and fall back to ``diffuse_color`` (the viewport colour).
-    ``diffuse_color`` alone stays at Blender's default 0.8 grey unless touched,
-    so reading it would make every untextured material render the same grey.
-    Mirrors the vehicle add-on's ``_base_color``.
-    """
-    if getattr(bmat, "use_nodes", False) and bmat.node_tree is not None:
-        for node in bmat.node_tree.nodes:
-            if node.type != "BSDF_PRINCIPLED":
-                continue
-            base = node.inputs.get("Base Color")
-            if base is not None and not base.is_linked:
-                c = base.default_value
-                return (c[0], c[1], c[2])
-    col = bmat.diffuse_color
-    return (col[0], col[1], col[2])
-
-
 def _material_from_bpy(bmat) -> Material:
-    m = Material()
-    if bmat is None:
-        return m
-
-    s = getattr(bmat, "vgs_material", None)
-
-    # Diffuse: the add-on's explicit picker wins; otherwise fall back to the
-    # Principled BSDF Base Color. Specular is driven entirely by the controls.
-    if s is not None and s.use_color_override:
-        m.color = np.array(tuple(s.diffuse_color), dtype=np.float64)
-    else:
-        m.color = np.array(_base_color(bmat), dtype=np.float64)
-
-    intensity = float(s.specular_intensity) if s is not None else 0.5
-    m.specular_exponent = float(s.specular_exponent) if s is not None else 50.0
-    tint = tuple(s.specular_tint) if (s is not None and s.use_specular_tint) else (1.0, 1.0, 1.0)
-    m.specular_color = np.array(tint, dtype=np.float64) * intensity
-
+    m, s = material_base(bmat, prop_attr="vgs_material", region_map=_REGION_MAP)
     if s is None:
         return m
 
-    flag, region = _REGION_MAP.get(s.region, (0, 0))
-    m.flags |= flag
-    m.region = region
+    # Visible mask overrides regular mask (mutually exclusive in the UI).
     if s.is_visible_mask:
+        m.flags &= ~MaterialFlag.IS_MASK
         m.flags |= MaterialFlag.IS_VISIBLE_MASK
-    elif s.is_mask:
-        m.flags |= MaterialFlag.IS_MASK
-    if s.no_ao:
-        m.flags |= MaterialFlag.NO_AO
-    if s.edge:
-        m.flags |= MaterialFlag.BACKGROUND_AA
-    if s.dark_edge:
-        m.flags |= MaterialFlag.BACKGROUND_AA_DARK
-    if s.no_bleed:
-        m.flags |= MaterialFlag.NO_BLEED
     if s.flat_shaded:
         m.flags |= MaterialFlag.IS_FLAT_SHADED
 
-    # Wall-only classification (ignored by every other path): the glass overlay
-    # split and the double-sided front/back split. Mirrors the MTL *Glass* /
-    # *Front* / *Back* name rules.
+    # Wall-only classification.
     m.is_glass = bool(s.is_glass)
     if s.wall_side == "FRONT":
         m.is_front = True
@@ -119,61 +65,8 @@ def _material_from_bpy(bmat) -> Material:
     return m
 
 
-def _extract_mesh(obj, depsgraph) -> Mesh | None:
-    """Evaluate `obj`, bake its world rotation+scale + basis change, -> Mesh."""
-    eval_obj = obj.evaluated_get(depsgraph)
-    me = eval_obj.to_mesh()
-    try:
-        me.calc_loop_triangles()
-        tris = me.loop_triangles
-        if len(tris) == 0:
-            return None
-
-        slots = [s.material for s in obj.material_slots]
-        materials = [_material_from_bpy(bm) for bm in slots] or [Material()]
-        n_mats = len(materials)
-
-        linear = _BASIS @ obj.matrix_world.to_3x3()
-        normal_mat = linear.inverted_safe().transposed()
-
-        uv_layer = me.uv_layers.active
-        verts: list[tuple[float, float, float]] = []
-        norms: list[tuple[float, float, float]] = []
-        uvs: list[tuple[float, float]] = []
-        faces: list[tuple[int, int, int]] = []
-        face_mats: list[int] = []
-
-        for lt in tris:
-            corner = []
-            split_n = lt.split_normals
-            for k in range(3):
-                vidx = lt.vertices[k]
-                loop_idx = lt.loops[k]
-                co = linear @ me.vertices[vidx].co
-                n = (normal_mat @ Vector(split_n[k])).normalized()
-                uv = uv_layer.data[loop_idx].uv if uv_layer else (0.0, 0.0)
-                verts.append((co.x, co.y, co.z))
-                norms.append((n.x, n.y, n.z))
-                uvs.append((uv[0], uv[1]))
-                corner.append(len(verts) - 1)
-            faces.append((corner[0], corner[1], corner[2]))
-            face_mats.append(min(lt.material_index, n_mats - 1))
-
-        return Mesh(
-            vertices=np.array(verts, dtype=np.float32),
-            normals=np.array(norms, dtype=np.float32),
-            uvs=np.array(uvs, dtype=np.float32),
-            faces=np.array(faces, dtype=np.uint32),
-            face_materials=np.array(face_mats, dtype=np.uint32),
-            materials=materials,
-        )
-    finally:
-        eval_obj.to_mesh_clear()
-
-
-def _object_position(obj) -> list[float]:
-    p = _BASIS @ obj.matrix_world.to_translation()
-    return [float(p.x), float(p.y), float(p.z)]
+def _extract(obj, depsgraph) -> Mesh | None:
+    return extract_mesh(obj, depsgraph, _material_from_bpy)
 
 
 def _geometry_objects(scene) -> list:
@@ -256,7 +149,7 @@ def _sample_animation_poses(
       pose 0 emits orientation ``[0, 0, 0]`` and later poses carry the rigid
       delta mapped into the renderer's OBJ-space YZX convention. One pool mesh.
     - **Deforming**: the mesh is re-extracted at every pose (armature / shape
-      keys / deform modifiers baked into the vertices by `_extract_mesh`, which
+      keys / deform modifiers baked into the vertices by `_extract`, which
       also bakes that frame's world rotation+scale). The entry therefore carries
       identity orientation and only the translation. One pool mesh per pose.
 
@@ -298,7 +191,7 @@ def _sample_animation_poses(
         rigid: list = []  # (obj, mesh_index, R_rest_inv)
         deforming: list = []  # (obj, rest_mesh_index)
         for obj in geo_objs:
-            mesh = _extract_mesh(obj, dg)
+            mesh = _extract(obj, dg)
             if mesh is None:
                 continue
             meshes.append(mesh)
@@ -319,9 +212,9 @@ def _sample_animation_poses(
             entries = poses[fi]
             for obj, idx, r_rest_inv in rigid:
                 m_f = obj.evaluated_get(dg).matrix_world
-                p = _BASIS @ m_f.to_translation()
+                p = BASIS @ m_f.to_translation()
                 r_rel = m_f.to_3x3() @ r_rest_inv
-                r_obj = _BASIS @ r_rel @ _BASIS.transposed()
+                r_obj = BASIS @ r_rel @ BASIS.transposed()
                 # Renderer applies rotate_y(a) @ rotate_z(b) @ rotate_x(c), which
                 # Blender's "YZX" Euler reconstructs as Ry(e.y) @ Rz(e.z) @ Rx(e.x).
                 e = r_obj.to_euler("YZX")
@@ -338,18 +231,18 @@ def _sample_animation_poses(
                 if fi == 0:
                     slot = rest_idx  # rest mesh already in the pool
                 else:
-                    mesh = _extract_mesh(obj, dg)
+                    mesh = _extract(obj, dg)
                     if mesh is None:
                         slot = last_slot[obj]  # hold the last good geometry
                     else:
                         meshes.append(mesh)
                         slot = len(meshes) - 1
                         last_slot[obj] = slot
-                # _extract_mesh baked this frame's world rotation+scale (and the
+                # _extract baked this frame's world rotation+scale (and the
                 # deformation) into the vertices; only the translation remains.
                 entries.append({
                     "mesh_index": slot,
-                    "position": _object_position(obj),
+                    "position": object_position(obj),
                     "orientation": [0.0, 0.0, 0.0],
                 })
             if wm is not None:
@@ -364,20 +257,6 @@ def _sample_animation_poses(
     return meshes, poses
 
 
-def _load_preview(filepath) -> IndexedImage | None:
-    if not filepath:
-        return None
-    path = bpy.path.abspath(filepath)
-    if not path or not os.path.exists(path):
-        return None
-    try:
-        return read_png(path)
-    except Exception:
-        pass
-    try:
-        return quantize_to_indexed(path)
-    except Exception:
-        return None
 
 
 def build_config_and_meshes(context):
@@ -415,14 +294,14 @@ def build_config_and_meshes(context):
         }
     else:
         for obj in geo_objs:
-            mesh = _extract_mesh(obj, depsgraph)
+            mesh = _extract(obj, depsgraph)
             if mesh is None:
                 continue
             idx = len(meshes)
             meshes.append(mesh)
             model.append({
                 "mesh_index": idx,
-                "position": _object_position(obj),
+                "position": object_position(obj),
                 "orientation": [0, 0, 0],
             })
 
@@ -486,4 +365,4 @@ def build_config_and_meshes(context):
             ],
         })
 
-    return config, meshes, _load_preview(ss.preview)
+    return config, meshes, load_preview(ss.preview)

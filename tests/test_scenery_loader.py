@@ -1,6 +1,8 @@
 """Tests for shared scenery config validation, object-type dispatch, the
 tile-centre mapping, and the wall/large object.json flag emission rules."""
 
+import json
+
 import numpy as np
 import pytest
 from openrct2_scenery_generator.constants import COORDS_PER_TILE
@@ -11,7 +13,11 @@ from openrct2_scenery_generator.exporter import (
 from openrct2_scenery_generator.loader import (
     LoadError,
     build_large_scenery,
+    build_small_scenery,
     build_wall_scenery,
+    load_large_scenery,
+    load_small_scenery,
+    load_wall_scenery,
     object_type_of,
 )
 from openrct2_x7_renderer.constants import TILE_SIZE
@@ -151,3 +157,157 @@ def test_large_json_negates_and_scales_tile_coords(tri_mesh):
     assert tile["y"] == -3 * COORDS_PER_TILE
     # z/clearance are already coordinate units -> not negated.
     assert tile["z"] == 8
+
+
+# --------------------------------------------------------------------------
+# Additional coverage for missed branches
+# --------------------------------------------------------------------------
+
+# --- _load_header: version string set (line 57) ---
+
+def test_load_header_stores_version_when_set(tri_mesh):
+    config = _wall_config(version="3.1")
+    obj = build_wall_scenery(config, [tri_mesh])
+    assert obj.version == "3.1"
+
+
+# --- _load_model error paths ---
+
+def test_load_model_raises_when_absent(tri_mesh):
+    with pytest.raises(LoadError, match='"model" not found'):
+        build_small_scenery({"id": "t", "name": "T"}, [tri_mesh])
+
+
+def test_load_model_raises_when_element_not_dict(tri_mesh):
+    config = {"id": "t", "name": "T", "model": ["not_a_dict"]}
+    with pytest.raises(LoadError, match='"model" is not an object'):
+        build_small_scenery(config, [tri_mesh])
+
+
+def test_load_model_raises_for_invalid_mesh_index(tri_mesh):
+    config = {"id": "t", "name": "T", "model": [{"mesh_index": "bad"}]}
+    with pytest.raises(LoadError, match='"mesh_index" not found or is not an integer'):
+        build_small_scenery(config, [tri_mesh])
+
+
+def test_load_model_raises_for_out_of_bounds_mesh_index(tri_mesh):
+    config = {"id": "t", "name": "T", "model": [{"mesh_index": 99}]}
+    with pytest.raises(LoadError, match="out of bounds"):
+        build_small_scenery(config, [tri_mesh])
+
+
+# --- _load_animated_model error paths ---
+
+def test_animation_frames_not_list_raises(tri_mesh):
+    config = {
+        "id": "t", "name": "T",
+        "animation": {"frame_offsets": [0], "frames": "not_a_list"},
+    }
+    with pytest.raises(LoadError, match='"animation.frames"'):
+        build_small_scenery(config, [tri_mesh])
+
+
+def test_animation_frames_empty_raises(tri_mesh):
+    config = {
+        "id": "t", "name": "T",
+        "animation": {"frame_offsets": [0], "frames": []},
+    }
+    with pytest.raises(LoadError, match='"animation.frames"'):
+        build_small_scenery(config, [tri_mesh])
+
+
+def test_animation_frames_mismatched_entry_count_raises(tri_mesh):
+    config = {
+        "id": "t", "name": "T",
+        "animation": {
+            "frame_offsets": [0, 1],
+            "frames": [
+                [{"mesh_index": 0}],
+                [{"mesh_index": 0}, {"mesh_index": -1}],
+            ],
+        },
+    }
+    with pytest.raises(LoadError, match="same number of model entries"):
+        build_small_scenery(config, [tri_mesh])
+
+
+# --- _load_animation error paths ---
+
+def test_animation_not_dict_raises(tri_mesh):
+    config = {"id": "t", "name": "T", "animation": "not_a_dict"}
+    with pytest.raises(LoadError, match='"animation" is not an object'):
+        build_small_scenery(config, [tri_mesh])
+
+
+def test_animation_frame_offsets_missing_raises(tri_mesh):
+    config = {
+        "id": "t", "name": "T",
+        "animation": {"frames": [[{"mesh_index": 0}]]},
+    }
+    with pytest.raises(LoadError, match='"animation.frame_offsets"'):
+        build_small_scenery(config, [tri_mesh])
+
+
+def test_animation_frame_offsets_empty_raises(tri_mesh):
+    config = {
+        "id": "t", "name": "T",
+        "animation": {"frame_offsets": [], "frames": [[{"mesh_index": 0}]]},
+    }
+    with pytest.raises(LoadError, match='"animation.frame_offsets"'):
+        build_small_scenery(config, [tri_mesh])
+
+
+# --- _load_tiles: non-dict element ---
+
+def test_tiles_element_not_dict_raises(tri_mesh):
+    with pytest.raises(LoadError, match="must be an object"):
+        build_large_scenery(_large_config(["not_a_dict"]), [tri_mesh])
+
+
+# --- load_*_scenery from file ---
+
+def _write_tri_obj(tmp_path):
+    p = tmp_path / "m.obj"
+    p.write_text("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n")
+    return p
+
+
+def test_load_small_scenery_from_file(tmp_path, monkeypatch):
+    _write_tri_obj(tmp_path)
+    cfg = {
+        "id": "rct2.t", "name": "T",
+        "meshes": ["m.obj"],
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+    }
+    (tmp_path / "small.json").write_text(json.dumps(cfg))
+    monkeypatch.chdir(tmp_path)
+    obj = load_small_scenery(tmp_path / "small.json")
+    assert obj.id == "rct2.t"
+
+
+def test_load_large_scenery_from_file(tmp_path, monkeypatch):
+    _write_tri_obj(tmp_path)
+    cfg = {
+        "id": "rct2.lg", "name": "Large",
+        "object_type": "scenery_large",
+        "meshes": ["m.obj"],
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+        "tiles": [{"x": 0, "y": 0}],
+    }
+    (tmp_path / "large.json").write_text(json.dumps(cfg))
+    monkeypatch.chdir(tmp_path)
+    obj = load_large_scenery(tmp_path / "large.json")
+    assert obj.id == "rct2.lg"
+
+
+def test_load_wall_scenery_from_file(tmp_path, monkeypatch):
+    _write_tri_obj(tmp_path)
+    cfg = {
+        "id": "rct2.wl", "name": "Wall",
+        "meshes": ["m.obj"],
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+    }
+    (tmp_path / "wall.json").write_text(json.dumps(cfg))
+    monkeypatch.chdir(tmp_path)
+    obj = load_wall_scenery(tmp_path / "wall.json")
+    assert obj.id == "rct2.wl"

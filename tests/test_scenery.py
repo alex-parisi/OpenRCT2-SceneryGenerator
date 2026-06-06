@@ -388,3 +388,58 @@ def test_large_render_order_and_count(tmp_path):
     imgs = render_large_scenery(_FakeContext(), combined, centers)
     # 4 preview + 4 per tile * 2 tiles.
     assert len(imgs) == count_large_scenery_sprites(2) == 12
+
+
+# --------------------------------------------------------------------------
+# Additional coverage for missed branches
+# --------------------------------------------------------------------------
+
+from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
+    _render_4_rotations,
+    _render_wall_block,
+)
+from openrct2_scenery_generator.types import SmallScenery  # noqa: E402
+from openrct2_x7_renderer.mesh import Material, Mesh  # noqa: E402
+
+
+def _empty_mesh() -> Mesh:
+    """A Mesh with no faces (but valid vertex/normal/uv arrays)."""
+    v = np.zeros((3, 3), dtype=np.float32)
+    return Mesh(
+        vertices=v,
+        normals=v.copy(),
+        uvs=np.zeros((3, 2), dtype=np.float32),
+        faces=np.zeros((0, 3), dtype=np.uint32),
+        face_materials=np.zeros(0, dtype=np.uint32),
+        materials=[Material()],
+    )
+
+
+def test_render_wall_block_empty_mesh_returns_blanks_flat():
+    blanks = _render_wall_block(None, _empty_mesh(), slope=False)
+    assert len(blanks) == 2
+    assert all(img.width == 1 for img in blanks)
+
+
+def test_render_wall_block_empty_mesh_returns_blanks_slope():
+    blanks = _render_wall_block(None, _empty_mesh(), slope=True)
+    assert len(blanks) == 6
+
+
+def test_render_4_rotations_empty_mesh_returns_blanks():
+    blanks = _render_4_rotations(None, _empty_mesh(), cx=0.0, cz=0.0)
+    assert len(blanks) == 4
+    assert all(img.width == 1 for img in blanks)
+
+
+def test_num_pose_groups_returns_one_when_not_animated():
+    obj = SmallScenery()
+    obj.is_animated = False
+    assert obj.num_pose_groups == 1
+
+
+def test_num_pose_groups_returns_one_when_frame_offsets_empty():
+    obj = SmallScenery()
+    obj.is_animated = True
+    obj.frame_offsets = []
+    assert obj.num_pose_groups == 1

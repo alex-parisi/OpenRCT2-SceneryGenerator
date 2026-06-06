@@ -14,8 +14,9 @@ import zipfile
 
 import numpy as np
 import pytest
+from openrct2_object_common.parkobj import combine_indexed_images
+from openrct2_object_common.testing import FakeContext
 from openrct2_scenery_generator.exporter import (
-    combine_indexed_images,
     export_large_scenery,
     export_large_scenery_test,
     export_large_scenery_to,
@@ -33,65 +34,6 @@ from openrct2_scenery_generator.loader import (
 )
 from openrct2_x7_renderer.mesh import load_mesh
 from openrct2_x7_renderer.types import IndexedImage
-
-
-def _img() -> IndexedImage:
-    return IndexedImage(1, 1, 0, 0, np.zeros((1, 1), dtype=np.uint8))
-
-
-class FakeScene:
-    """Stands in for a FinalizedScene; every view renders a 1x1 dummy."""
-
-    def __init__(self, events):
-        self._events = events
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_a):
-        return False
-
-    def render_view(self, _view):
-        return _img()
-
-    def render_silhouette(self, _view):
-        return _img()
-
-    def end_render(self):
-        self._events.append("end")
-
-
-class FakeBuilder:
-    """Stands in for a SceneBuilder, recording add_model/finalize calls."""
-
-    def __init__(self, events):
-        self._events = events
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_a):
-        return False
-
-    def add_model(self, *_a, **_k):
-        self._events.append("add")
-        return self
-
-    def finalize(self):
-        self._events.append("finalize")
-        return FakeScene(self._events)
-
-
-class FakeContext:
-    """Records the render lifecycle calls without touching Embree."""
-
-    def __init__(self):
-        self.events = []
-
-    def begin_render(self):
-        self.events.append("begin")
-        return FakeBuilder(self.events)
-
 
 _TRI = "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"
 
@@ -192,7 +134,8 @@ def test_export_small_scenery_to_writes_parkobj(tmp_path):
     assert j["objectType"] == "scenery_small"
     # The static path opens a scene (begin), adds the model, and finalizes;
     # cleanup runs through the `with` block's __exit__, not an explicit end.
-    assert "begin" in ctx.events and "add" in ctx.events and "finalize" in ctx.events
+    assert "begin" in ctx.events and "finalize" in ctx.events
+    assert any(isinstance(e, tuple) and e[0] == "add" for e in ctx.events)
     assert (work / "images.dat").exists()
 
 
@@ -393,3 +336,103 @@ def test_export_wall_scenery_test_writes_combined_preview(tmp_path):
     export_wall_scenery_test(obj, FakeContext(), test_dir)
     img = read_png(test_dir / "preview_combined.png")
     assert (img.width, img.height) == (2, 1)
+
+
+# --------------------------------------------------------------------------
+# Progress callbacks
+# --------------------------------------------------------------------------
+
+
+def test_export_small_scenery_to_reports_progress(tmp_path):
+    # Static small scenery: one tick per rendered rotation (4 total).
+    obj = _small(tmp_path)
+    calls: list[tuple[int, int]] = []
+    export_small_scenery_to(
+        obj, FakeContext(), tmp_path / "s.parkobj", tmp_path / "w",
+        progress=lambda d, t: calls.append((d, t)),
+    )
+    assert calls == [(1, 4), (2, 4), (3, 4), (4, 4)]
+
+
+def test_export_small_scenery_to_reports_progress_animated(tmp_path):
+    # Animated small scenery: one tick per pose group (base + additional).
+    obj = _animated(tmp_path, poses=3)
+    calls: list[tuple[int, int]] = []
+    export_small_scenery_to(
+        obj, FakeContext(), tmp_path / "a.parkobj", tmp_path / "w",
+        progress=lambda d, t: calls.append((d, t)),
+    )
+    # 3 pose groups: tick after base (pose 0), after pose 1, after pose 2.
+    assert calls == [(1, 3), (2, 3), (3, 3)]
+
+
+def test_export_large_scenery_to_reports_progress(tmp_path):
+    # Large scenery: one tick for preview, then one per tile.
+    obj = _large(tmp_path, ntiles=2)
+    calls: list[tuple[int, int]] = []
+    export_large_scenery_to(
+        obj, FakeContext(), tmp_path / "g.parkobj", tmp_path / "w",
+        progress=lambda d, t: calls.append((d, t)),
+    )
+    # 2 tiles -> total = 3: (1,3) preview, (2,3) tile 0, (3,3) tile 1.
+    assert calls == [(1, 3), (2, 3), (3, 3)]
+
+
+def test_export_wall_scenery_to_reports_progress(tmp_path):
+    # Walls render in one shot; progress fires once at completion.
+    obj = _wall(tmp_path)
+    calls: list[tuple[int, int]] = []
+    export_wall_scenery_to(
+        obj, FakeContext(), tmp_path / "wall.parkobj", tmp_path / "w",
+        progress=lambda d, t: calls.append((d, t)),
+    )
+    assert calls == [(1, 1)]
+
+
+# --------------------------------------------------------------------------
+# Additional coverage for missed branches
+# --------------------------------------------------------------------------
+
+
+def test_combine_indexed_images_empty_returns_blank():
+    out = combine_indexed_images([])
+    assert out.width == 1
+    assert out.height == 1
+
+
+def test_build_small_scenery_json_includes_scenery_group(tmp_path):
+    from openrct2_scenery_generator.exporter import build_small_scenery_json
+
+    obj = _small(tmp_path, scenery_group="rct2.scenery_group.mygroup")
+    j = build_small_scenery_json(obj)
+    assert j["properties"]["sceneryGroup"] == "rct2.scenery_group.mygroup"
+
+
+def test_build_large_scenery_json_includes_scrolling_mode_and_scenery_group(tmp_path):
+    from openrct2_scenery_generator.exporter import build_large_scenery_json
+    from openrct2_scenery_generator.loader import build_large_scenery
+
+    config = {
+        "id": "openrct2sg.scenery_large.sign",
+        "name": "Sign",
+        "object_type": "scenery_large",
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+        "tiles": [{"x": 0, "y": 0}],
+        "scrolling_mode": 2,
+        "scenery_group": "rct2.scenery_group.signs",
+    }
+    (tmp_path / "m.obj").write_text(_TRI)
+    from openrct2_x7_renderer.mesh import load_mesh
+
+    obj = build_large_scenery(config, [load_mesh(tmp_path / "m.obj")])
+    j = build_large_scenery_json(obj)
+    assert j["properties"]["scrollingMode"] == 2
+    assert j["properties"]["sceneryGroup"] == "rct2.scenery_group.signs"
+
+
+def test_build_wall_scenery_json_includes_scenery_group(tmp_path):
+    from openrct2_scenery_generator.exporter import build_wall_scenery_json
+
+    obj = _wall(tmp_path, scenery_group="rct2.scenery_group.walls")
+    j = build_wall_scenery_json(obj)
+    assert j["properties"]["sceneryGroup"] == "rct2.scenery_group.walls"

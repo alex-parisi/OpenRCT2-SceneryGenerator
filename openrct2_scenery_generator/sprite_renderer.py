@@ -9,9 +9,11 @@ the palette region of remappable materials, exactly as for vehicles; it does
 not add sprites here.
 """
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 from openrct2_x7_renderer.constants import TILE_SIZE
 from openrct2_x7_renderer.geometry import assign_faces_to_tiles, combine_model_world, subset_mesh
 from openrct2_x7_renderer.mesh import Mesh
@@ -22,7 +24,7 @@ _IDENTITY3 = np.eye(3, dtype=np.float64)
 
 
 def _render_scene_view(
-    context: Context, mesh: Mesh, translation: np.ndarray, view: np.ndarray
+    context: Context, mesh: Mesh, translation: NDArray[np.float64], view: NDArray[np.float64]
 ) -> IndexedImage:
     """Render a single model under a single view in its own scene. Used by the
     wall and large-scenery paths, which re-anchor (different `translation`) per
@@ -33,7 +35,7 @@ def _render_scene_view(
 
 
 def _render_scene_views(
-    context: Context, mesh: Mesh, translation: np.ndarray, views: list[np.ndarray]
+    context: Context, mesh: Mesh, translation: NDArray[np.float64], views: list[NDArray[np.float64]]
 ) -> list[IndexedImage]:
     """Render a single model under several views, sharing one finalized scene
     (same anchor for every view)."""
@@ -84,10 +86,19 @@ def count_small_scenery_sprites(
     return num_rotations
 
 
-def render_small_scenery(scene: FinalizedScene, num_rotations: int = 4) -> list[IndexedImage]:
+def render_small_scenery(
+    scene: FinalizedScene,
+    num_rotations: int = 4,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[IndexedImage]:
     """Render the prepared (finalized) scene under the first `num_rotations`
     cardinal views."""
-    return [scene.render_view(VIEWS[i]) for i in range(num_rotations)]
+    images = []
+    for i in range(num_rotations):
+        images.append(scene.render_view(VIEWS[i]))
+        if progress is not None:
+            progress(i + 1, num_rotations)
+    return images
 
 
 def _render_pose_rotations(
@@ -102,7 +113,11 @@ def _render_pose_rotations(
 
 
 def render_small_scenery_animated(
-    context: Context, meshes: list[Mesh], model: Model, num_pose_groups: int
+    context: Context,
+    meshes: list[Mesh],
+    model: Model,
+    num_pose_groups: int,
+    progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
     """Render an animated small-scenery sprite set in the engine's image order:
     a leading 4-sprite base group (rendered from pose 0; the static depiction the
@@ -112,10 +127,15 @@ def render_small_scenery_animated(
     direction` (Paint.SmallScenery.cpp:293-296)."""
     # The base group and pose group 0 are both pose 0's 4 rotations (identical
     # renders), so render that pose once and reuse it for both.
+    # Progress units: 1 for the base (= pose 0) render, then 1 per additional pose.
     base = _render_pose_rotations(context, meshes, model, 0)
+    if progress is not None:
+        progress(1, num_pose_groups)
     images: list[IndexedImage] = list(base) + list(base)
     for g in range(1, num_pose_groups):
         images.extend(_render_pose_rotations(context, meshes, model, g))
+        if progress is not None:
+            progress(g + 1, num_pose_groups)
     return images
 
 
@@ -195,7 +215,7 @@ def _render_wall_pair(
     return out
 
 
-def _submesh(mesh: Mesh, keep: np.ndarray) -> Mesh:
+def _submesh(mesh: Mesh, keep: NDArray[np.bool_]) -> Mesh:
     """A mesh with only the faces selected by the boolean `keep` mask (vertices,
     normals and materials are shared by reference; the renderer only touches
     referenced ones)."""
@@ -357,8 +377,9 @@ def _render_4_rotations(
 def render_large_scenery(
     context: Context,
     combined: Mesh,
-    tile_centers_xz: np.ndarray,
+    tile_centers_xz: NDArray[np.float64],
     units_per_tile: float = TILE_SIZE,
+    progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
     """Render a large-scenery sprite set in OpenRCT2 image order:
     4 preview sprites (whole structure, centred), then per tile (in `tiles`
@@ -367,22 +388,30 @@ def render_large_scenery(
 
     `units_per_tile` is the authored render scale; the per-direction corner
     anchors are half a tile in OBJ units, so they scale with it.
+
+    Progress units: 1 for the preview render, then 1 per tile.
     """
     images: list[IndexedImage] = []
     corners = _corners_by_dir(units_per_tile)
+    num_tiles = tile_centers_xz.shape[0]
+    total = 1 + num_tiles
 
     # Preview slots 0-3: the whole structure, anchored at the footprint centre.
     anchor = (
-        tile_centers_xz.mean(axis=0) if tile_centers_xz.shape[0] else np.zeros(2, dtype=np.float64)
+        tile_centers_xz.mean(axis=0) if num_tiles else np.zeros(2, dtype=np.float64)
     )
     images.extend(
         _render_4_rotations(context, combined, float(anchor[0]), float(anchor[1]), corners)
     )
+    if progress is not None:
+        progress(1, total)
 
     # Per-tile sprites, anchored at each tile's per-direction corner.
     assign = assign_faces_to_tiles(combined, tile_centers_xz)
-    for seq in range(tile_centers_xz.shape[0]):
+    for seq in range(num_tiles):
         sub = subset_mesh(combined, assign == seq)
         cx, cz = tile_centers_xz[seq]
         images.extend(_render_4_rotations(context, sub, float(cx), float(cz), corners))
+        if progress is not None:
+            progress(seq + 2, total)
     return images

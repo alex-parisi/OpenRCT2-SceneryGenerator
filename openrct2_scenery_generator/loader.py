@@ -20,6 +20,7 @@ from openrct2_object_common.config import (
     require_string,
 )
 from openrct2_x7_renderer.constants import TILE_SIZE
+from openrct2_x7_renderer.mesh import Mesh
 from openrct2_x7_renderer.types import IndexedImage, MeshFrame, Model
 
 from .constants import (
@@ -32,7 +33,7 @@ from .constants import (
 from .types import LargeScenery, LargeSceneryTile, SmallScenery, WallScenery
 
 
-def _load_units_per_tile(root: dict) -> float:
+def _load_units_per_tile(root: dict[str, Any]) -> float:
     """Render scale: OBJ units per tile. Defaults to RCT2's real-world tile."""
     upt = optional_number(root, "units_per_tile", TILE_SIZE)
     if upt <= 0.0:
@@ -42,7 +43,7 @@ def _load_units_per_tile(root: dict) -> float:
 
 def _load_header(
     obj: SmallScenery | LargeScenery | WallScenery,
-    root: dict,
+    root: dict[str, Any],
     preview: IndexedImage | None,
     cursor_default: str,
 ) -> None:
@@ -132,7 +133,7 @@ def _load_animation(obj: SmallScenery, anim: Any) -> None:
 
 
 def build_small_scenery(
-    config: dict, meshes: list, preview: IndexedImage | None = None
+    config: dict[str, Any], meshes: list[Mesh], preview: IndexedImage | None = None
 ) -> SmallScenery:
     """Build a SmallScenery from a parsed config dict + in-memory meshes."""
     root = config
@@ -194,7 +195,7 @@ def _load_tiles(value: Any) -> list[LargeSceneryTile]:
 
 
 def build_large_scenery(
-    config: dict, meshes: list, preview: IndexedImage | None = None
+    config: dict[str, Any], meshes: list[Mesh], preview: IndexedImage | None = None
 ) -> LargeScenery:
     """Build a LargeScenery from a parsed config dict + in-memory meshes."""
     root = config
@@ -223,7 +224,7 @@ def load_large_scenery(json_path: Path | str) -> LargeScenery:
 
 
 def build_wall_scenery(
-    config: dict, meshes: list, preview: IndexedImage | None = None
+    config: dict[str, Any], meshes: list[Mesh], preview: IndexedImage | None = None
 ) -> WallScenery:
     """Build a WallScenery from a parsed config dict + in-memory meshes."""
     root = config
@@ -257,7 +258,7 @@ def load_wall_scenery(json_path: Path | str) -> WallScenery:
     return build_wall_scenery(root, load_meshes(root), load_preview(root))
 
 
-def object_type_of(config: dict) -> str:
+def object_type_of(config: dict[str, Any]) -> str:
     """Read the scenery object type, defaulting to small scenery."""
     t = optional_string(config, "object_type", "scenery_small")
     if t not in ("scenery_small", "scenery_large", "scenery_wall"):
