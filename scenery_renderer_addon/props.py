@@ -44,18 +44,33 @@ OBJECT_TYPE_ITEMS = [
     ("scenery_small", "Small Scenery", "Single-tile scenery (1 or 4 rotations)"),
     ("scenery_large", "Large Scenery", "Multi-tile scenery built from a tiles list"),
     ("scenery_wall", "Wall", "Single tile-edge wall panel (modelled along OBJ +Z)"),
+    ("footpath_banner", "Banner", "Path-edge banner / sign (back pole + front sign per direction)"),
+    ("footpath_item", "Path Addition", "Path addition: lamp, bin, bench, fountain, or queue TV"),
+    ("scenery_group", "Scenery Group", "A scenery tab (name + icon + member ids); no geometry"),
+]
+
+# How a path addition is drawn & indexed (PathAddition.render_as). Mirrors
+# PATH_ADDITION_RENDER_TYPES; the bin/bench/lamp choice also drives the engine's
+# draw-type flag (set in build_path_addition_json).
+PATH_ADDITION_RENDER_AS_ITEMS = [
+    ("lamp", "Lamp", "Lamp post / queue TV (one upright per edge)"),
+    ("bin", "Bin", "Litter bin (gains broken + full sprite blocks)"),
+    ("bench", "Bench", "Seat facing the path (gains broken sprites when breakable)"),
+    ("fountain", "Fountain", "Jumping fountain base"),
 ]
 
 def _scale_preset_update(self, _context):
     scale_preset_update(self, _context)
 
-# Per-material role on a double-sided wall. Mirrors the MTL name classification
-# (*Front* / *Back*) the CLI path uses, exposed as an explicit picker. Untagged
-# ("BOTH") faces are shared and appear on both sides.
+# Per-material front/back role. Mirrors the MTL name classification
+# (*Front* / *Back*) the CLI path uses, exposed as an explicit picker. Used by
+# double-sided walls (front/back blocks) and by banners (front pole+sign vs the
+# rear pole). Untagged ("BOTH") faces are shared: on a wall they appear on both
+# sides, on a banner they fall into the front layer.
 WALL_SIDE_ITEMS = [
-    ("BOTH", "Both Sides", "Shared face; appears on both sides of a double-sided wall"),
-    ("FRONT", "Front Only", "Only on the front block of a double-sided wall"),
-    ("BACK", "Back Only", "Only on the rear block of a double-sided wall"),
+    ("BOTH", "Both / Front", "Shared: both wall sides, or a banner's front layer"),
+    ("FRONT", "Front Only", "Front block of a double-sided wall, or a banner's front pole/sign"),
+    ("BACK", "Back Only", "Rear block of a double-sided wall, or a banner's back pole"),
 ]
 
 OBJECT_ROLE_ITEMS = [
@@ -236,6 +251,16 @@ class VGSObjectSettings(PropertyGroup):
     )
 
 
+class VGSGroupEntry(PropertyGroup):
+    """One member object id of a scenery group (tab)."""
+
+    object_id: StringProperty(
+        name="Object ID",
+        description="An object id to include under this tab, e.g. author.scenery_small.obj",
+        default="",
+    )
+
+
 class VGSTile(PropertyGroup):
     """One large-scenery tile. x/y are tile indices (the exporter converts to
     OpenRCT2 coordinate units); z/clearance are in coordinate units."""
@@ -384,6 +409,52 @@ class VGSScenerySettings(PropertyGroup):
         default=False,
     )
 
+    # --- Banner ------------------------------------------------------------
+    # Banners reuse `scrolling_mode` (the sign's scrolling text) and
+    # `has_primary_colour` (recolours the Remap1 sign); the back pole / front
+    # layer split is per-material via the Front/Back picker (VGSMaterialSettings).
+
+    # --- Path addition (footpath_item) -------------------------------------
+    render_as: EnumProperty(
+        name="Render As",
+        description="How the engine draws & indexes the path addition's sprites",
+        items=PATH_ADDITION_RENDER_AS_ITEMS,
+        default="lamp",
+    )
+    is_breakable: BoolProperty(
+        name="Breakable",
+        description="Can be vandalised; adds a block of 4 broken sprites (lamps/benches)",
+        default=False,
+    )
+    is_television: BoolProperty(
+        name="Queue TV",
+        description="A queue-line television (drawn as a lamp)",
+        default=False,
+    )
+    is_jumping_fountain_water: BoolProperty(name="Jumping Fountain (Water)", default=False)
+    is_jumping_fountain_snow: BoolProperty(name="Jumping Fountain (Snow)", default=False)
+    is_allowed_on_queue: BoolProperty(
+        name="Allowed on Queue",
+        description="May be placed on queue paths",
+        default=True,
+    )
+
+    # --- Scenery group (tab) -----------------------------------------------
+    priority: IntProperty(
+        name="Priority",
+        description="Sort order of the tab in the scenery window (lower = earlier)",
+        default=40,
+        min=0,
+        max=255,
+    )
+    entries: CollectionProperty(type=VGSGroupEntry)
+    entry_index: IntProperty(default=0)
+    icon: PointerProperty(
+        name="Tab Icon",
+        description="Image used as the group's tab icon (palette-mapped at export)",
+        type=bpy.types.Image,
+    )
+
     # --- Custom lighting ---------------------------------------------------
     lights: CollectionProperty(type=VGSLight)
     light_index: IntProperty(default=0)
@@ -397,6 +468,7 @@ class VGSScenerySettings(PropertyGroup):
 _CLASSES = (
     VGSMaterialSettings,
     VGSObjectSettings,
+    VGSGroupEntry,
     VGSTile,
     VGSLight,
     VGSScenerySettings,

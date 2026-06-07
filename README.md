@@ -56,11 +56,14 @@ openrct2-scenery-generator [--test|--skip-render] <input.json|.yaml>
 The config format is JSON or YAML (chosen by file extension). The top-level
 `object_type` field selects the path:
 
-| `object_type`    | Output                  |
-|------------------|-------------------------|
-| `scenery_small`  | single-tile scenery (default if omitted) |
-| `scenery_large`  | multi-tile scenery      |
-| `scenery_wall`   | tile-edge wall          |
+| `object_type`     | Output                  |
+|-------------------|-------------------------|
+| `scenery_small`   | single-tile scenery (default if omitted) |
+| `scenery_large`   | multi-tile scenery      |
+| `scenery_wall`    | tile-edge wall          |
+| `footpath_banner` | path-edge banner / sign |
+| `footpath_item`   | path addition (lamp, bin, bench, fountain, TV) |
+| `scenery_group`   | a scenery tab (name + icon + member ids); no geometry |
 
 ### Example configs
 
@@ -99,6 +102,27 @@ tiles:
 **Walls** use `object_type: scenery_wall`; flag `is_allowed_on_slope`,
 `has_glass`, or `is_double_sided` to select the sprite-block layout. See
 `examples/scenery_wall/` for flat, glass, and double-sided walls.
+
+**Banners** (`object_type: footpath_banner`) render 8 sprites (a back-pole and a
+front pole+sign per direction). The mesh is split by material tag, reusing the
+wall mechanism: faces whose material name contains `Back` go into the rear
+sprite, everything else (incl. a `Remap1` sign that recolours with
+`has_primary_colour`) into the front. See `examples/footpath_banner/`.
+
+**Path additions** (`object_type: footpath_item`) set `render_as` to one of
+`lamp`, `bin`, `bench`, `fountain`. The object is modelled centred on the tile
+and rendered as 4 edge sprites (plus a menu preview); the engine places them on
+open path edges. Breakable lamps/benches and bins gain extra `broken`/`full`
+sprite blocks — supply optional `broken_meshes`/`broken_model` and
+`full_meshes`/`full_model` for distinct vandalised/full art, otherwise those
+slots reuse the normal sprites. See `examples/footpath_item/`.
+
+> Note: the edge-anchor placement for path additions is a sensible starting
+> point and may need a pixel pass against the running game.
+
+**Scenery groups** (`object_type: scenery_group`) have no geometry — they are a
+scenery tab. Provide a `preview:` PNG (the tab icon), a `priority`, and an
+`entries:` list of member object ids. See `examples/scenery_group/group.yaml`.
 
 ## Mesh convention
 
@@ -141,7 +165,7 @@ configs](#example-configs)); the UI is just a front-end for the same build.
 
 | Control | Values / default | What it does |
 |---|---|---|
-| **Type** | Small Scenery *(default)* / Large Scenery / Wall | Selects the object kind. Changes which type-specific box appears below and which exporter runs. |
+| **Type** | Small Scenery *(default)* / Large Scenery / Wall / Banner / Path Addition / Scenery Group | Selects the object kind. Changes which type-specific box appears below and which exporter runs. Scenery Group has no geometry, so it hides the scale/placement/lighting sections. |
 | **Scale** | Realistic (3.3 m/tile) *(default)* / 1 unit = 1 tile / Custom | How many OBJ units span one OpenRCT2 tile. Drives sprite size and the tile-anchor maths. "Realistic" matches RCT2's real-world tile scale; "1 unit = 1 tile" lets you model in tile units. |
 | **Units / Tile** | float, default `3.3`, min `0.01` | Only shown when **Scale = Custom**. The raw units-per-tile value; the presets just write this for you. |
 
@@ -154,7 +178,9 @@ configs](#example-configs)); the UI is just a front-end for the same build.
 | **Authors** | *(empty)* | Comma-separated author list. |
 | **Version** | `1.0` | Object version string. |
 
-**Placement box** — gameplay/placement behaviour common to all types.
+**Placement box** — gameplay/placement behaviour. The fields shown adapt to the
+type: banners drop Removal Price / Cursor / Secondary Colour; path additions show
+only Price / Cursor / Scenery Group; scenery groups hide the box entirely.
 
 | Control | Default | What it does |
 |---|---|---|
@@ -211,7 +237,41 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 | **Scrolling Mode** | int, default `255`, range `0–255` | `255` = no scrolling text. Only set a real mode for scrolling signs (mode 0 is a *valid, active* mode, so leave it at 255 otherwise). |
 | **Tiles** | list | The multi-tile footprint. Use **＋ / －** to add/remove tiles; each tile exposes **X**, **Y** (tile *indices* along OBJ +X / +Z), **Z** (height offset, coordinate units) and **Clearance** (vertical clearance, coordinate units, default `40`). At least one tile is required. |
 
-**Custom Lighting box** (collapsible — click the header arrow)
+**Banner box** *(Type = Banner)* — model the sign + poles along the tile edge.
+
+| Control | Default | What it does |
+|---|---|---|
+| **Scrolling Mode** | int, default `255`, range `0–255` | `255` = no scrolling text; set a real mode for a scrolling sign. |
+
+Tag the sign material **Back** (rear pole) or **Front** (front pole + sign) via
+the per-material **Banner Layer** picker; untagged faces fall into the front
+layer. **Primary Colour** recolours a **Remap 1** sign.
+
+**Path Addition box** *(Type = Path Addition)* — model the item centred on the
+tile origin; the engine places it on open path edges.
+
+| Control | Values / default | What it does |
+|---|---|---|
+| **Render As** | Lamp *(default)* / Bin / Bench / Fountain | How the engine draws & indexes the sprites. Also sets the matching draw-type flag (`isBin`/`isBench`/`isLamp`). |
+| **Breakable** *(lamp/bench)* | off | Can be vandalised; adds a block of 4 broken sprites. |
+| **Queue TV** *(lamp)* | off | A queue-line television. |
+| **Jumping Fountain (Water/Snow)** *(fountain)* | off | Fountain spray type. |
+| **Allowed on Queue** | on | May be placed on queue paths. |
+| **Allowed on Slope** | on | May be placed on sloped paths. |
+
+> Distinct vandalised/full art isn't authored in the add-on — those slots reuse
+> the normal sprites. Supply `broken_meshes` / `full_meshes` via the CLI config
+> for separate art.
+
+**Scenery Group box** *(Type = Scenery Group)* — a tab; no geometry.
+
+| Control | Default | What it does |
+|---|---|---|
+| **Priority** | int, default `40`, range `0–255` | Sort order of the tab (lower = earlier). |
+| **Tab Icon** | *(none)* | Image datablock used as the tab icon; saved to PNG and palette-mapped on export. |
+| **Member objects** | list | The object ids bundled under this tab. Use **＋ / －** to add/remove rows. |
+
+**Custom Lighting box** (collapsible — click the header arrow) — geometry types only
 
 By default the object uses the built-in nine-light rig. Toggle **Custom
 Lighting** to override it with your own list.
@@ -248,7 +308,7 @@ the MTL material-*name* keyword rules used by the CLI path.
 | Control | Values / default | What it does |
 |---|---|---|
 | **Glass** *(walls only)* | off | Translucent glass pane; split into the wall's glass overlay block. |
-| **Wall Side** *(walls only)* | Both Sides *(default)* / Front Only / Back Only | Which side of a double-sided wall this face belongs to. "Both" faces are shared. |
+| **Wall Side** / **Banner Layer** *(walls & banners)* | Both/Front *(default)* / Front Only / Back Only | For a double-sided wall: which side this face belongs to ("Both" is shared). For a banner: **Back** = rear pole, **Front**/**Both** = front pole + sign. |
 | **Region** | None *(default)* / Remap 1 (primary) / Remap 2 (secondary) / Remap 3 (tertiary) / Greyscale / Peep / Chain | How OpenRCT2 treats this material's pixels. The Remap regions are recoloured at runtime by the matching placement colour. |
 | **Mask** | off | Treat as a collision/visibility mask. |
 | **Visible Mask** | off | Mask that is also rendered. |

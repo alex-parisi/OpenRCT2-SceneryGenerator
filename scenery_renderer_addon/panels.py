@@ -22,6 +22,13 @@ class VGS_UL_lights(UIList):
         row.prop(item, "strength", text="")
 
 
+class VGS_UL_group_entries(UIList):
+    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
+        row = layout.row(align=True)
+        row.label(text="", icon="OBJECT_DATA")
+        row.prop(item, "object_id", text="", emboss=False)
+
+
 class VGS_PT_scenery(Panel):
     bl_label = "OpenRCT2 Scenery"
     bl_space_type = "VIEW_3D"
@@ -31,11 +38,13 @@ class VGS_PT_scenery(Panel):
     def draw(self, context):
         layout = self.layout
         ss = context.scene.vgs_scenery
+        is_group = ss.object_type == "scenery_group"
 
         layout.prop(ss, "object_type")
-        layout.prop(ss, "scale_preset")
-        if ss.scale_preset == "CUSTOM":
-            layout.prop(ss, "units_per_tile")
+        if not is_group:
+            layout.prop(ss, "scale_preset")
+            if ss.scale_preset == "CUSTOM":
+                layout.prop(ss, "units_per_tile")
 
         box = layout.box()
         box.label(text="Identity", icon="INFO")
@@ -44,15 +53,15 @@ class VGS_PT_scenery(Panel):
         box.prop(ss, "authors")
         box.prop(ss, "version")
 
-        box = layout.box()
-        box.label(text="Placement", icon="TOOL_SETTINGS")
-        row = box.row(align=True)
-        row.prop(ss, "price")
-        row.prop(ss, "removal_price")
-        box.prop(ss, "cursor")
-        box.prop(ss, "scenery_group")
-        box.prop(ss, "has_primary_colour")
-        box.prop(ss, "has_secondary_colour")
+        # Scenery groups carry no geometry, pricing, or lighting -- just a tab
+        # icon and a member list -- so they take a dedicated branch and skip the
+        # placement / type / lighting sections entirely.
+        if is_group:
+            _draw_group(layout, ss)
+            _draw_actions(layout)
+            return
+
+        _draw_placement(layout, ss)
 
         if ss.object_type == "scenery_small":
             box = layout.box()
@@ -97,6 +106,28 @@ class VGS_PT_scenery(Panel):
                     icon="ERROR",
                 )
             box.label(text="Model the panel running along OBJ +Z.", icon="INFO")
+        elif ss.object_type == "footpath_banner":
+            box = layout.box()
+            box.label(text="Banner", icon="MOD_LENGTH")
+            box.prop(ss, "scrolling_mode")
+            box.label(text="Tag the sign material Front and the back pole Back.", icon="INFO")
+            box.label(text="Primary Colour recolours a Remap 1 sign.", icon="INFO")
+        elif ss.object_type == "footpath_item":
+            box = layout.box()
+            box.label(text="Path Addition", icon="OUTLINER_OB_LIGHT")
+            box.prop(ss, "render_as")
+            col = box.column(align=True)
+            if ss.render_as in ("lamp", "bench"):
+                col.prop(ss, "is_breakable")
+            if ss.render_as == "lamp":
+                col.prop(ss, "is_television")
+            if ss.render_as == "fountain":
+                col.prop(ss, "is_jumping_fountain_water")
+                col.prop(ss, "is_jumping_fountain_snow")
+            col.prop(ss, "is_allowed_on_queue")
+            col.prop(ss, "is_allowed_on_slope")
+            box.label(text="Model the item centred on the tile origin.", icon="INFO")
+            box.label(text="Broken/full states reuse the normal sprites.", icon="INFO")
         else:
             box = layout.box()
             box.label(text="Large Scenery", icon="MESH_GRID")
@@ -122,33 +153,81 @@ class VGS_PT_scenery(Panel):
             else:
                 box.label(text="No tiles - add at least one.", icon="ERROR")
 
-        box = layout.box()
-        row = box.row()
-        row.prop(
-            ss, "show_lights",
-            icon="TRIA_DOWN" if ss.show_lights else "TRIA_RIGHT", emboss=False,
-        )
-        row.label(text="", icon="LIGHT_SUN")
-        if ss.show_lights:
-            row = box.row()
-            row.template_list("VGS_UL_lights", "", ss, "lights", ss, "light_index", rows=3)
-            col = row.column(align=True)
-            col.operator("vgs.light_add", icon="ADD", text="")
-            col.operator("vgs.light_remove", icon="REMOVE", text="")
-            if ss.lights:
-                light = ss.lights[ss.light_index]
-                sub = box.column()
-                sub.prop(light, "type")
-                sub.prop(light, "shadow")
-                sub.prop(light, "direction")
-                sub.prop(light, "strength")
-            else:
-                box.label(text="No lights - using the default rig.", icon="INFO")
+        _draw_lights(layout, ss)
+        _draw_actions(layout)
 
-        col = layout.column(align=True)
-        col.scale_y = 1.3
-        col.operator("vgs.test_render", icon="RENDER_STILL")
-        col.operator("vgs.export_parkobj", icon="EXPORT")
+
+def _draw_placement(layout, ss):
+    """Pricing / cursor / colours, tailored per type. Banners and path additions
+    only consume a subset (no removal price; banners have no cursor)."""
+    box = layout.box()
+    box.label(text="Placement", icon="TOOL_SETTINGS")
+    ot = ss.object_type
+    if ot == "footpath_banner":
+        box.prop(ss, "price")
+        box.prop(ss, "scenery_group")
+        box.prop(ss, "has_primary_colour")
+        return
+    if ot == "footpath_item":
+        box.prop(ss, "price")
+        box.prop(ss, "cursor")
+        box.prop(ss, "scenery_group")
+        return
+    row = box.row(align=True)
+    row.prop(ss, "price")
+    row.prop(ss, "removal_price")
+    box.prop(ss, "cursor")
+    box.prop(ss, "scenery_group")
+    box.prop(ss, "has_primary_colour")
+    box.prop(ss, "has_secondary_colour")
+
+
+def _draw_group(layout, ss):
+    """The scenery-group tab: priority, member entries, and the tab icon."""
+    box = layout.box()
+    box.label(text="Scenery Group", icon="GROUP")
+    box.prop(ss, "priority")
+    box.prop(ss, "icon")
+    box.label(text="Member objects:")
+    row = box.row()
+    row.template_list("VGS_UL_group_entries", "", ss, "entries", ss, "entry_index", rows=4)
+    col = row.column(align=True)
+    col.operator("vgs.entry_add", icon="ADD", text="")
+    col.operator("vgs.entry_remove", icon="REMOVE", text="")
+    if not ss.entries:
+        box.label(text="No members - add the object ids in this tab.", icon="INFO")
+
+
+def _draw_lights(layout, ss):
+    box = layout.box()
+    row = box.row()
+    row.prop(
+        ss, "show_lights",
+        icon="TRIA_DOWN" if ss.show_lights else "TRIA_RIGHT", emboss=False,
+    )
+    row.label(text="", icon="LIGHT_SUN")
+    if ss.show_lights:
+        row = box.row()
+        row.template_list("VGS_UL_lights", "", ss, "lights", ss, "light_index", rows=3)
+        col = row.column(align=True)
+        col.operator("vgs.light_add", icon="ADD", text="")
+        col.operator("vgs.light_remove", icon="REMOVE", text="")
+        if ss.lights:
+            light = ss.lights[ss.light_index]
+            sub = box.column()
+            sub.prop(light, "type")
+            sub.prop(light, "shadow")
+            sub.prop(light, "direction")
+            sub.prop(light, "strength")
+        else:
+            box.label(text="No lights - using the default rig.", icon="INFO")
+
+
+def _draw_actions(layout):
+    col = layout.column(align=True)
+    col.scale_y = 1.3
+    col.operator("vgs.test_render", icon="RENDER_STILL")
+    col.operator("vgs.export_parkobj", icon="EXPORT")
 
 
 def _draw_material_settings(layout, ms, object_type):
@@ -162,6 +241,10 @@ def _draw_material_settings(layout, ms, object_type):
         col = layout.column(align=True)
         col.prop(ms, "is_glass")
         col.prop(ms, "wall_side")
+    elif object_type == "footpath_banner":
+        # Banners reuse the front/back split (front pole+sign vs rear pole) but
+        # have no glass block.
+        layout.prop(ms, "wall_side", text="Banner Layer")
     layout.prop(ms, "region")
     col = layout.column(align=True)
     col.prop(ms, "is_mask")
@@ -284,6 +367,7 @@ class VGS_PT_object_view3d(Panel):
 _CLASSES = (
     VGS_UL_tiles,
     VGS_UL_lights,
+    VGS_UL_group_entries,
     VGS_PT_scenery,
     VGS_PT_object_view3d,
 )

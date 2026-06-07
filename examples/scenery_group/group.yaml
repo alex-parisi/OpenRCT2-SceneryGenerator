@@ -1,0 +1,20 @@
+object_type: scenery_group
+id: openrct2sg.scenery_group.test_group
+name: Test Scenery Group
+authors: [OpenRCT2-SceneryGenerator]
+version: "1.0"
+
+output_directory: .
+
+# The tab icon (a provided PNG). The engine draws image+1, so the exporter emits
+# two icon slots from this single image.
+preview: examples/scenery_group/icon.png
+
+priority: 40
+
+# Member objects that appear under this tab. These reference the other examples.
+entries:
+  - openrct2sg.footpath_banner.test_banner
+  - openrct2sg.footpath_item.test_lamp
+  - openrct2sg.footpath_item.test_bench
+  - openrct2sg.scenery_small.obelisk

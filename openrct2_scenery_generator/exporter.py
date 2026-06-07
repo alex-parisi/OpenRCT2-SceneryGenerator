@@ -23,16 +23,25 @@ from openrct2_x7_renderer.types import IndexedImage
 
 from .constants import COORDS_PER_TILE, SCROLLING_MODE_NONE
 from .sprite_renderer import (
+    render_banner,
     render_large_scenery,
+    render_path_addition,
     render_small_scenery,
     render_small_scenery_animated,
     render_wall,
 )
-from .types import LargeScenery, SmallScenery, WallScenery
+from .types import (
+    Banner,
+    LargeScenery,
+    PathAddition,
+    SceneryGroup,
+    SmallScenery,
+    WallScenery,
+)
 
 log = logging.getLogger(__name__)
 
-Scenery = SmallScenery | LargeScenery | WallScenery
+Scenery = SmallScenery | LargeScenery | WallScenery | Banner | PathAddition | SceneryGroup
 ProgressFn = Callable[[int, int], None]
 # (obj, context, work_dir, progress) -> the object.json "images" list.
 RenderSprites = Callable[[Any, Context, Path, ProgressFn | None], list[str]]
@@ -428,3 +437,263 @@ def export_wall_scenery_test(
     # Walls aren't 4-way rotated; the contact sheet shows every wall sprite
     # (flat plus any slope / glass / double-sided variants) in one image.
     write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
+
+
+# ---------------------------------------------------------------------------
+# Banners (footpath_banner)
+# ---------------------------------------------------------------------------
+
+
+def build_banner_json(obj: Banner) -> dict[str, Any]:
+    out = object_json_header(
+        obj.id,
+        object_type="footpath_banner",
+        original_id=obj.original_id,
+        version=obj.version,
+        authors=obj.authors,
+    )
+
+    properties: dict[str, Any] = {"price": obj.price}
+    if obj.has_primary_colour:
+        properties["hasPrimaryColour"] = True
+    if obj.scrolling_mode != SCROLLING_MODE_NONE:
+        properties["scrollingMode"] = obj.scrolling_mode
+    if obj.scenery_group:
+        properties["sceneryGroup"] = obj.scenery_group
+    out["properties"] = properties
+
+    out["strings"] = {"name": {"en-GB": obj.name}}
+    return out
+
+
+def _render_banner_sprites(
+    obj: Banner,
+    context: Context,
+    object_dir: Path,
+    progress: ProgressFn | None = None,
+) -> list[str]:
+    combined = combine_model_world(obj.meshes, obj.model)
+    images = render_banner(context, combined, obj.units_per_tile, progress)
+    return write_images_dat_lgx(images, object_dir)
+
+
+def export_banner_to(
+    obj: Banner,
+    context: Context,
+    parkobj_path: Path | str,
+    work_dir: Path | str,
+    skip_render: bool = False,
+    progress: ProgressFn | None = None,
+) -> None:
+    _export_scenery(
+        obj, context, parkobj_path, work_dir,
+        build_banner_json(obj), _render_banner_sprites, skip_render, progress,
+    )
+
+
+def export_banner(
+    obj: Banner, context: Context, output_directory: Path | str, skip_render: bool = False
+) -> None:
+    export_banner_to(
+        obj,
+        context,
+        Path(output_directory) / f"{obj.id}.parkobj",
+        Path("object"),
+        skip_render=skip_render,
+    )
+
+
+def export_banner_test(obj: Banner, context: Context, test_dir: Path | str = "test") -> None:
+    """Render the banner sprites for fast iteration (back/front per direction)."""
+    test_dir = Path(test_dir)
+    test_dir.mkdir(parents=True, exist_ok=True)
+    combined = combine_model_world(obj.meshes, obj.model)
+    images = render_banner(context, combined, obj.units_per_tile)
+    for d in range(4):
+        write_png(images[d * 2], test_dir / f"banner_{d}_back.png")
+        write_png(images[d * 2 + 1], test_dir / f"banner_{d}_front.png")
+    write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
+
+
+# ---------------------------------------------------------------------------
+# Path additions (footpath_item)
+# ---------------------------------------------------------------------------
+
+
+def build_path_addition_json(obj: PathAddition) -> dict[str, Any]:
+    out = object_json_header(
+        obj.id,
+        object_type="footpath_item",
+        original_id=obj.original_id,
+        version=obj.version,
+        authors=obj.authors,
+    )
+
+    properties: dict[str, Any] = {
+        "renderAs": obj.render_as,
+        "cursor": obj.cursor,
+        "price": obj.price,
+    }
+    # The draw-type flag the engine pairs with renderAs (PathAdditionObject.cpp).
+    draw_flag = {"bin": "isBin", "bench": "isBench", "lamp": "isLamp"}.get(obj.render_as)
+    if draw_flag is not None:
+        properties[draw_flag] = True
+
+    # Emit only the flags that are set. isAllowedOnQueue/Slope are inverted in the
+    # engine (absent => not allowed), so emitting `true` only when allowed yields
+    # the intended behaviour (Json::FlagType::Inverted).
+    for key, val in (
+        ("isBreakable", obj.is_breakable),
+        ("isJumpingFountainWater", obj.is_jumping_fountain_water),
+        ("isJumpingFountainSnow", obj.is_jumping_fountain_snow),
+        ("isTelevision", obj.is_television),
+        ("isAllowedOnQueue", obj.is_allowed_on_queue),
+        ("isAllowedOnSlope", obj.is_allowed_on_slope),
+    ):
+        if val:
+            properties[key] = True
+    if obj.scenery_group:
+        properties["sceneryGroup"] = obj.scenery_group
+    out["properties"] = properties
+
+    out["strings"] = {"name": {"en-GB": obj.name}}
+    return out
+
+
+def _render_path_addition_sprites(
+    obj: PathAddition,
+    context: Context,
+    object_dir: Path,
+    progress: ProgressFn | None = None,
+) -> list[str]:
+    normal = combine_model_world(obj.meshes, obj.model)
+    broken = combine_model_world(obj.broken_meshes, obj.broken_model) if obj.broken_meshes else None
+    full = combine_model_world(obj.full_meshes, obj.full_model) if obj.full_meshes else None
+    images = render_path_addition(
+        context,
+        normal,
+        broken,
+        full,
+        render_as=obj.render_as,
+        breakable=obj.is_breakable,
+        units_per_tile=obj.units_per_tile,
+        progress=progress,
+    )
+    return write_images_dat_lgx(images, object_dir)
+
+
+def export_path_addition_to(
+    obj: PathAddition,
+    context: Context,
+    parkobj_path: Path | str,
+    work_dir: Path | str,
+    skip_render: bool = False,
+    progress: ProgressFn | None = None,
+) -> None:
+    _export_scenery(
+        obj, context, parkobj_path, work_dir,
+        build_path_addition_json(obj), _render_path_addition_sprites, skip_render, progress,
+    )
+
+
+def export_path_addition(
+    obj: PathAddition, context: Context, output_directory: Path | str, skip_render: bool = False
+) -> None:
+    export_path_addition_to(
+        obj,
+        context,
+        Path(output_directory) / f"{obj.id}.parkobj",
+        Path("object"),
+        skip_render=skip_render,
+    )
+
+
+def export_path_addition_test(
+    obj: PathAddition, context: Context, test_dir: Path | str = "test"
+) -> None:
+    """Render the path-addition sprites for fast iteration (preview + edges,
+    plus any broken/full blocks)."""
+    test_dir = Path(test_dir)
+    test_dir.mkdir(parents=True, exist_ok=True)
+    normal = combine_model_world(obj.meshes, obj.model)
+    broken = combine_model_world(obj.broken_meshes, obj.broken_model) if obj.broken_meshes else None
+    full = combine_model_world(obj.full_meshes, obj.full_model) if obj.full_meshes else None
+    images = render_path_addition(
+        context, normal, broken, full,
+        render_as=obj.render_as, breakable=obj.is_breakable, units_per_tile=obj.units_per_tile,
+    )
+    write_png(images[0], test_dir / "preview.png")
+    for i, img in enumerate(images[1:], start=1):
+        write_png(img, test_dir / f"item_{i}.png")
+    write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
+
+
+# ---------------------------------------------------------------------------
+# Scenery groups (scenery_group)
+# ---------------------------------------------------------------------------
+
+
+def build_scenery_group_json(obj: SceneryGroup) -> dict[str, Any]:
+    out = object_json_header(
+        obj.id,
+        object_type="scenery_group",
+        original_id=obj.original_id,
+        version=obj.version,
+        authors=obj.authors,
+    )
+    out["properties"] = {"priority": obj.priority, "entries": list(obj.entries)}
+    out["strings"] = {"name": {"en-GB": obj.name}}
+    return out
+
+
+def _render_scenery_group_sprites(
+    obj: SceneryGroup,
+    context: Context,
+    object_dir: Path,
+    progress: ProgressFn | None = None,
+) -> list[str]:
+    """A scenery group has no geometry; emit the tab icon into both image slots
+    (the engine's DrawPreview reads image+1). `context` is unused."""
+    del context
+    icon = obj.preview if obj.preview is not None else IndexedImage.blank(1, 1)
+    if progress is not None:
+        progress(1, 1)
+    return write_images_dat_lgx([icon, icon], object_dir)
+
+
+def export_scenery_group_to(
+    obj: SceneryGroup,
+    context: Context,
+    parkobj_path: Path | str,
+    work_dir: Path | str,
+    skip_render: bool = False,
+    progress: ProgressFn | None = None,
+) -> None:
+    _export_scenery(
+        obj, context, parkobj_path, work_dir,
+        build_scenery_group_json(obj), _render_scenery_group_sprites, skip_render, progress,
+    )
+
+
+def export_scenery_group(
+    obj: SceneryGroup, context: Context, output_directory: Path | str, skip_render: bool = False
+) -> None:
+    export_scenery_group_to(
+        obj,
+        context,
+        Path(output_directory) / f"{obj.id}.parkobj",
+        Path("object"),
+        skip_render=skip_render,
+    )
+
+
+def export_scenery_group_test(
+    obj: SceneryGroup, context: Context, test_dir: Path | str = "test"
+) -> None:
+    """Write the tab icon for fast iteration."""
+    del context
+    test_dir = Path(test_dir)
+    test_dir.mkdir(parents=True, exist_ok=True)
+    icon = obj.preview if obj.preview is not None else IndexedImage.blank(1, 1)
+    write_png(icon, test_dir / "icon.png")
+    write_png(icon, test_dir / "preview_combined.png")

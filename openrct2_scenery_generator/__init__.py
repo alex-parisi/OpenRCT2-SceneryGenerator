@@ -1,6 +1,7 @@
 """
-OpenRCT2 scenery object generator. Builds `scenery_small`, `scenery_large`, and
-`scenery_wall` `.parkobj`s from OBJ meshes using the shared iso-render core.
+OpenRCT2 scenery object generator. Builds `scenery_small`, `scenery_large`,
+`scenery_wall`, `footpath_banner`, and `footpath_item` `.parkobj`s from OBJ meshes
+using the shared iso-render core, plus `scenery_group` tabs (icon + member list).
 """
 
 from importlib.metadata import PackageNotFoundError, version

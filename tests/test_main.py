@@ -63,7 +63,17 @@ def test_render_test_path(monkeypatch):
     assert calls["export_test"]["ctx"] == ("ctx", 32.0, False)
 
 
-@pytest.mark.parametrize("object_type", ["scenery_small", "scenery_large", "scenery_wall"])
+@pytest.mark.parametrize(
+    "object_type",
+    [
+        "scenery_small",
+        "scenery_large",
+        "scenery_wall",
+        "footpath_banner",
+        "footpath_item",
+        "scenery_group",
+    ],
+)
 def test_render_dispatches_per_object_type(monkeypatch, object_type):
     # _render keys the loader/exporter triple off object_type_of(root); each of
     # the three scenery kinds must reach its own dispatch entry.
@@ -76,7 +86,14 @@ def test_render_dispatches_per_object_type(monkeypatch, object_type):
 def test_real_dispatch_table_covers_every_object_type():
     # The live table must hold an entry for each type object_type_of accepts,
     # or _render would KeyError at runtime.
-    assert set(cli._DISPATCH) == {"scenery_small", "scenery_large", "scenery_wall"}
+    assert set(cli._DISPATCH) == {
+        "scenery_small",
+        "scenery_large",
+        "scenery_wall",
+        "footpath_banner",
+        "footpath_item",
+        "scenery_group",
+    }
     for triple in cli._DISPATCH.values():
         assert len(triple) == 3  # (load, export, export_test)
 

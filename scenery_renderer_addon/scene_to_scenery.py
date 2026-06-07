@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import os
+import tempfile
 
 import bpy
 from openrct2_object_common.blender.mesh_extract import (
@@ -23,8 +24,11 @@ from openrct2_object_common.blender.mesh_extract import (
     material_base,
     object_position,
 )
+from openrct2_scenery_generator.loader import build_scenery_group
 from openrct2_x7_renderer.constants import MaterialFlag
+from openrct2_x7_renderer.image import quantize_to_indexed
 from openrct2_x7_renderer.mesh import Material, Mesh, load_texture
+from openrct2_x7_renderer.types import IndexedImage
 
 _REGION_MAP = {
     "NONE": (0, 0),
@@ -349,6 +353,20 @@ def build_config_and_meshes(context):
             "has_glass": ss.has_glass,
             "is_double_sided": ss.is_double_sided,
         })
+    elif ss.object_type == "footpath_banner":
+        # Banner reads price / scenery_group / has_primary_colour / scrolling_mode;
+        # the back/front split is per-material (Front/Back classification).
+        config.update({"scrolling_mode": int(ss.scrolling_mode)})
+    elif ss.object_type == "footpath_item":
+        config.update({
+            "render_as": ss.render_as,
+            "is_breakable": ss.is_breakable,
+            "is_television": ss.is_television,
+            "is_jumping_fountain_water": ss.is_jumping_fountain_water,
+            "is_jumping_fountain_snow": ss.is_jumping_fountain_snow,
+            "is_allowed_on_queue": ss.is_allowed_on_queue,
+            "is_allowed_on_slope": ss.is_allowed_on_slope,
+        })
     else:  # scenery_large
         if not ss.tiles:
             raise SceneError(
@@ -365,3 +383,53 @@ def build_config_and_meshes(context):
         })
 
     return config, meshes
+
+
+# Tab-icon edge size, in pixels. The engine's group DrawPreview offsets the
+# sprite from its origin (SceneryGroupObject.cpp), so a small, centred icon reads
+# correctly as a tab button.
+_GROUP_ICON_SIZE = 32
+
+
+def _group_preview(ss):
+    """Quantise the group's tab-icon image to the RCT2 palette, centred on its
+    draw origin, or None when no icon is set. The bpy image is saved to a PNG
+    (RGBA) and run through `quantize_to_indexed` (Floyd-Steinberg onto the
+    non-remap palette region; source alpha -> transparent)."""
+    if ss.icon is None:
+        return None
+    tmpdir = tempfile.mkdtemp(prefix="vgs_icon_")
+    path = os.path.join(tmpdir, "icon.png")
+    img = ss.icon.copy()
+    try:
+        img.file_format = "PNG"
+        img.filepath_raw = path
+        img.save()
+        icon = quantize_to_indexed(path, size=_GROUP_ICON_SIZE)
+    finally:
+        bpy.data.images.remove(img)
+    return IndexedImage(
+        width=icon.width,
+        height=icon.height,
+        x_offset=-icon.width // 2,
+        y_offset=-icon.height // 2,
+        pixels=icon.pixels,
+    )
+
+
+def build_group(context):
+    """Build a SceneryGroup (tab) from the scene settings -- no geometry, just the
+    name, priority, member entries, and an optional icon image."""
+    ss = context.scene.vgs_scenery
+    authors = [a.strip() for a in ss.authors.split(",") if a.strip()]
+    entries = [e.object_id.strip() for e in ss.entries if e.object_id.strip()]
+    config = {
+        "object_type": "scenery_group",
+        "id": ss.id,
+        "name": ss.name,
+        "authors": authors,
+        "version": ss.version,
+        "priority": int(ss.priority),
+        "entries": entries,
+    }
+    return build_scenery_group(config, _group_preview(ss))

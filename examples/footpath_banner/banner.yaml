@@ -1,0 +1,17 @@
+object_type: footpath_banner
+id: openrct2sg.footpath_banner.test_banner
+name: Test Banner
+authors: [OpenRCT2-SceneryGenerator]
+version: "1.0"
+
+output_directory: .
+
+meshes:
+  - examples/footpath_banner/banner.obj
+
+model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+price: 250
+has_primary_colour: true     # recolours the Remap1 sign panel
+scrolling_mode: 17           # enable scrolling text on the sign

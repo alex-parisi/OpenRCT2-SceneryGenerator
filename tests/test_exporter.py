@@ -436,3 +436,227 @@ def test_build_wall_scenery_json_includes_scenery_group(tmp_path):
     obj = _wall(tmp_path, scenery_group="rct2.scenery_group.walls")
     j = build_wall_scenery_json(obj)
     assert j["properties"]["sceneryGroup"] == "rct2.scenery_group.walls"
+
+
+# --------------------------------------------------------------------------
+# Banners
+# --------------------------------------------------------------------------
+
+
+def _banner(tmp_path, **overrides):
+    # One Back-tagged face + one untagged face, so the renderer's back/front
+    # split has geometry on both sides.
+    (tmp_path / "b.mtl").write_text(
+        "newmtl PostBack\nKd 0.3 0.2 0.1\nnewmtl Post\nKd 0.3 0.2 0.1\n"
+    )
+    (tmp_path / "b.obj").write_text(
+        "mtllib b.mtl\n"
+        "v 0 0 -1\nv 0 0 -0.8\nv 0 1 -1\n"
+        "v 0 0 1\nv 0 0 0.8\nv 0 1 1\n"
+        "usemtl PostBack\nf 1 2 3\n"
+        "usemtl Post\nf 4 5 6\n"
+    )
+    config = {
+        "id": "openrct2sg.footpath_banner.test",
+        "name": "Test Banner",
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+        **overrides,
+    }
+    from openrct2_scenery_generator.loader import build_banner
+
+    return build_banner(config, [load_mesh(tmp_path / "b.obj")])
+
+
+def test_export_banner_to_writes_eight_sprites(tmp_path):
+    from openrct2_scenery_generator.exporter import export_banner_to
+
+    obj = _banner(tmp_path, price=250, has_primary_colour=True, scrolling_mode=17)
+    parkobj = tmp_path / "b.parkobj"
+    export_banner_to(obj, FakeContext(), parkobj, tmp_path / "w")
+    with zipfile.ZipFile(parkobj) as zf:
+        j = json.loads(zf.read("object.json"))
+    assert j["objectType"] == "footpath_banner"
+    assert j["images"] == ["$LGX:images.dat[0..7]"]
+    assert j["properties"]["hasPrimaryColour"] is True
+    assert j["properties"]["scrollingMode"] == 17
+
+
+def test_build_banner_json_omits_unset(tmp_path):
+    from openrct2_scenery_generator.exporter import build_banner_json
+
+    j = build_banner_json(_banner(tmp_path))
+    assert "hasPrimaryColour" not in j["properties"]
+    assert "scrollingMode" not in j["properties"]
+
+
+def test_build_banner_json_includes_scenery_group(tmp_path):
+    from openrct2_scenery_generator.exporter import build_banner_json
+
+    j = build_banner_json(_banner(tmp_path, scenery_group="grp.id"))
+    assert j["properties"]["sceneryGroup"] == "grp.id"
+
+
+# --------------------------------------------------------------------------
+# Path additions
+# --------------------------------------------------------------------------
+
+
+def _item(tmp_path, **overrides):
+    (tmp_path / "m.obj").write_text(_TRI)
+    config = {
+        "id": "openrct2sg.footpath_item.test",
+        "name": "Test Item",
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+        **overrides,
+    }
+    from openrct2_scenery_generator.loader import build_path_addition
+
+    return build_path_addition(config, [load_mesh(tmp_path / "m.obj")])
+
+
+@pytest.mark.parametrize(
+    ("render_as", "breakable", "n"),
+    [("lamp", False, 5), ("bench", True, 9), ("bin", False, 13), ("fountain", False, 5)],
+)
+def test_export_path_addition_image_counts(tmp_path, render_as, breakable, n):
+    from openrct2_scenery_generator.exporter import export_path_addition_to
+
+    obj = _item(tmp_path, render_as=render_as, is_breakable=breakable)
+    parkobj = tmp_path / f"{render_as}.parkobj"
+    export_path_addition_to(obj, FakeContext(), parkobj, tmp_path / f"w_{render_as}")
+    with zipfile.ZipFile(parkobj) as zf:
+        j = json.loads(zf.read("object.json"))
+    assert j["objectType"] == "footpath_item"
+    assert j["images"] == [f"$LGX:images.dat[0..{n - 1}]"]
+
+
+def test_build_path_addition_json_flags(tmp_path):
+    from openrct2_scenery_generator.exporter import build_path_addition_json
+
+    obj = _item(tmp_path, render_as="bench", is_breakable=True, is_allowed_on_queue=False)
+    props = build_path_addition_json(obj)["properties"]
+    assert props["renderAs"] == "bench"
+    assert props["isBench"] is True
+    assert props["isBreakable"] is True
+    # Allowed-on-slope defaults True -> emitted; queue set False -> omitted
+    # (inverted flag: absent => not allowed).
+    assert props["isAllowedOnSlope"] is True
+    assert "isAllowedOnQueue" not in props
+
+
+def test_build_path_addition_json_includes_scenery_group(tmp_path):
+    from openrct2_scenery_generator.exporter import build_path_addition_json
+
+    obj = _item(tmp_path, render_as="lamp", scenery_group="grp.id")
+    assert build_path_addition_json(obj)["properties"]["sceneryGroup"] == "grp.id"
+
+
+def test_path_addition_missing_broken_mesh_still_full_count(tmp_path):
+    # A breakable bench with no broken mesh reuses the normal edge sprites, so it
+    # still emits all 9 slots the engine may index.
+    from openrct2_scenery_generator.exporter import export_path_addition_to
+
+    obj = _item(tmp_path, render_as="bench", is_breakable=True)
+    assert not obj.broken_meshes
+    export_path_addition_to(obj, FakeContext(), tmp_path / "b.parkobj", tmp_path / "wb")
+    with zipfile.ZipFile(tmp_path / "b.parkobj") as zf:
+        j = json.loads(zf.read("object.json"))
+    assert j["images"] == ["$LGX:images.dat[0..8]"]
+
+
+# --------------------------------------------------------------------------
+# Scenery groups
+# --------------------------------------------------------------------------
+
+
+def test_export_scenery_group_writes_two_icons_without_render(tmp_path):
+    from openrct2_scenery_generator.exporter import export_scenery_group_to
+    from openrct2_scenery_generator.loader import build_scenery_group
+
+    obj = build_scenery_group(
+        {
+            "id": "openrct2sg.scenery_group.test",
+            "name": "Group",
+            "priority": 7,
+            "entries": ["a.b.c", "d.e.f"],
+        },
+        IndexedImage.blank(4, 4),
+    )
+    ctx = FakeContext()
+    parkobj = tmp_path / "g.parkobj"
+    export_scenery_group_to(obj, ctx, parkobj, tmp_path / "wg")
+    with zipfile.ZipFile(parkobj) as zf:
+        j = json.loads(zf.read("object.json"))
+    assert j["objectType"] == "scenery_group"
+    # Two icon slots; DrawPreview reads image+1.
+    assert j["images"] == ["$LGX:images.dat[0..1]"]
+    assert j["properties"] == {"priority": 7, "entries": ["a.b.c", "d.e.f"]}
+    # Groups have no geometry, so no rendering happens.
+    assert ctx.events == []
+
+
+def _group(entries=("a.b.c",), preview=None):
+    from openrct2_scenery_generator.loader import build_scenery_group
+
+    return build_scenery_group(
+        {"id": "openrct2sg.scenery_group.t", "name": "G", "entries": list(entries)},
+        preview,
+    )
+
+
+def test_export_new_type_dir_wrappers(tmp_path, monkeypatch):
+    from openrct2_scenery_generator.exporter import (
+        export_banner,
+        export_path_addition,
+        export_scenery_group,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    out_dir = tmp_path / "dist"
+    export_banner(_banner(tmp_path), FakeContext(), out_dir)
+    export_path_addition(_item(tmp_path, render_as="lamp"), FakeContext(), out_dir)
+    export_scenery_group(_group(), FakeContext(), out_dir)
+    assert (out_dir / "openrct2sg.footpath_banner.test.parkobj").exists()
+    assert (out_dir / "openrct2sg.footpath_item.test.parkobj").exists()
+    assert (out_dir / "openrct2sg.scenery_group.t.parkobj").exists()
+
+
+def test_export_banner_test_writes_pngs(tmp_path):
+    from openrct2_scenery_generator.exporter import export_banner_test
+
+    test_dir = tmp_path / "test"
+    export_banner_test(_banner(tmp_path), FakeContext(), test_dir)
+    for d in range(4):
+        assert (test_dir / f"banner_{d}_back.png").exists()
+        assert (test_dir / f"banner_{d}_front.png").exists()
+
+
+def test_export_path_addition_test_writes_pngs(tmp_path):
+    from openrct2_scenery_generator.exporter import export_path_addition_test
+
+    test_dir = tmp_path / "test"
+    # bin with broken+full meshes to exercise both extra blocks in the test path.
+    obj = _item(tmp_path, render_as="bin")
+    export_path_addition_test(obj, FakeContext(), test_dir)
+    assert (test_dir / "preview.png").exists()
+    for i in range(1, 13):
+        assert (test_dir / f"item_{i}.png").exists()
+
+
+def test_export_scenery_group_test_writes_icon(tmp_path):
+    from openrct2_scenery_generator.exporter import export_scenery_group_test
+
+    test_dir = tmp_path / "test"
+    export_scenery_group_test(_group(preview=IndexedImage.blank(4, 4)), FakeContext(), test_dir)
+    assert (test_dir / "icon.png").exists()
+
+
+def test_export_scenery_group_reports_progress(tmp_path):
+    from openrct2_scenery_generator.exporter import export_scenery_group_to
+
+    calls: list[tuple[int, int]] = []
+    export_scenery_group_to(
+        _group(), FakeContext(), tmp_path / "g.parkobj", tmp_path / "wg",
+        progress=lambda i, n: calls.append((i, n)),
+    )
+    assert calls == [(1, 1)]

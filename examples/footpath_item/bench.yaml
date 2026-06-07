@@ -1,0 +1,29 @@
+object_type: footpath_item
+id: openrct2sg.footpath_item.test_bench
+name: Test Bench
+authors: [OpenRCT2-SceneryGenerator]
+version: "1.0"
+
+output_directory: .
+
+render_as: bench
+
+meshes:
+  - examples/footpath_item/bench.obj
+
+model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+# Optional vandalised state. Without these keys the broken sprites reuse the
+# normal edge sprites. Breakable -> 9 sprites (preview + 4 edges + 4 broken).
+broken_meshes:
+  - examples/footpath_item/bench_broken.obj
+
+broken_model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+price: 50
+cursor: CURSOR_BENCH_DOWN
+is_breakable: true
+is_allowed_on_queue: true
+is_allowed_on_slope: true

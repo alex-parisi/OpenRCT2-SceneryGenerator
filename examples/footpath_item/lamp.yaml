@@ -1,0 +1,21 @@
+object_type: footpath_item
+id: openrct2sg.footpath_item.test_lamp
+name: Test Lamp
+authors: [OpenRCT2-SceneryGenerator]
+version: "1.0"
+
+output_directory: .
+
+render_as: lamp
+
+meshes:
+  - examples/footpath_item/lamp.obj
+
+model:
+  - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}
+
+price: 100
+cursor: CURSOR_LAMPPOST_DOWN
+is_allowed_on_queue: true
+is_allowed_on_slope: true
+# Non-breakable lamp -> 5 sprites (preview + 4 edges).

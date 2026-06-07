@@ -12,10 +12,14 @@ from openrct2_scenery_generator.exporter import (
 )
 from openrct2_scenery_generator.loader import (
     LoadError,
+    build_banner,
     build_large_scenery,
+    build_path_addition,
+    build_scenery_group,
     build_small_scenery,
     build_wall_scenery,
     load_large_scenery,
+    load_scenery_group,
     load_small_scenery,
     load_wall_scenery,
     object_type_of,
@@ -37,7 +41,17 @@ def test_object_type_defaults_to_small():
     assert object_type_of({}) == "scenery_small"
 
 
-@pytest.mark.parametrize("t", ["scenery_small", "scenery_large", "scenery_wall"])
+@pytest.mark.parametrize(
+    "t",
+    [
+        "scenery_small",
+        "scenery_large",
+        "scenery_wall",
+        "footpath_banner",
+        "footpath_item",
+        "scenery_group",
+    ],
+)
 def test_object_type_accepts_known_types(t):
     assert object_type_of({"object_type": t}) == t
 
@@ -311,3 +325,138 @@ def test_load_wall_scenery_from_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     obj = load_wall_scenery(tmp_path / "wall.json")
     assert obj.id == "rct2.wl"
+
+
+# --------------------------------------------------------------------------
+# Banners
+# --------------------------------------------------------------------------
+
+
+def _banner_config(**overrides):
+    base = {
+        "id": "openrct2sg.footpath_banner.t",
+        "name": "B",
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_banner_loads_fields(tri_mesh):
+    obj = build_banner(
+        _banner_config(price=250, has_primary_colour=True, scrolling_mode=17), [tri_mesh]
+    )
+    assert obj.price == 250
+    assert obj.has_primary_colour is True
+    assert obj.scrolling_mode == 17
+    assert obj.num_sprites == 8
+
+
+def test_load_banner_from_file(tmp_path, monkeypatch):
+    _write_tri_obj(tmp_path)
+    cfg = {
+        "id": "rct2.bn", "name": "Banner",
+        "object_type": "footpath_banner",
+        "meshes": ["m.obj"],
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+    }
+    (tmp_path / "banner.json").write_text(json.dumps(cfg))
+    monkeypatch.chdir(tmp_path)
+    from openrct2_scenery_generator.loader import load_banner
+
+    obj = load_banner(tmp_path / "banner.json")
+    assert obj.id == "rct2.bn"
+
+
+# --------------------------------------------------------------------------
+# Path additions
+# --------------------------------------------------------------------------
+
+
+def _item_config(**overrides):
+    base = {
+        "id": "openrct2sg.footpath_item.t",
+        "name": "I",
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+    }
+    base.update(overrides)
+    return base
+
+
+def test_path_addition_rejects_unknown_render_as(tri_mesh):
+    with pytest.raises(LoadError, match="Unrecognized render_as"):
+        build_path_addition(_item_config(render_as="spaceship"), [tri_mesh])
+
+
+def test_path_addition_defaults_allowed_flags(tri_mesh):
+    obj = build_path_addition(_item_config(render_as="lamp"), [tri_mesh])
+    # Allowed-on-queue/slope default to True (positive sense).
+    assert obj.is_allowed_on_queue is True
+    assert obj.is_allowed_on_slope is True
+
+
+@pytest.mark.parametrize(
+    ("render_as", "breakable", "expected"),
+    [
+        ("lamp", False, 5),
+        ("lamp", True, 9),
+        ("bench", True, 9),
+        ("bin", False, 13),
+        ("fountain", False, 5),
+    ],
+)
+def test_path_addition_sprite_count(tri_mesh, render_as, breakable, expected):
+    obj = build_path_addition(
+        _item_config(render_as=render_as, is_breakable=breakable), [tri_mesh]
+    )
+    assert obj.num_sprites == expected
+
+
+def test_path_addition_loads_optional_broken_full_meshes(tmp_path, monkeypatch):
+    _write_tri_obj(tmp_path)
+    cfg = _item_config(
+        render_as="bin",
+        meshes=["m.obj"],
+        broken_meshes=["m.obj"],
+        broken_model=[{"mesh_index": 0, "position": [0, 0, 0]}],
+        full_meshes=["m.obj"],
+        full_model=[{"mesh_index": 0, "position": [0, 0, 0]}],
+    )
+    monkeypatch.chdir(tmp_path)
+    from openrct2_scenery_generator.loader import load_path_addition
+
+    (tmp_path / "item.json").write_text(json.dumps(cfg))
+    obj = load_path_addition(tmp_path / "item.json")
+    assert len(obj.broken_meshes) == 1
+    assert len(obj.full_meshes) == 1
+
+
+# --------------------------------------------------------------------------
+# Scenery groups
+# --------------------------------------------------------------------------
+
+
+def test_scenery_group_loads_entries_without_meshes():
+    obj = build_scenery_group(
+        {
+            "id": "openrct2sg.scenery_group.t",
+            "name": "G",
+            "priority": 12,
+            "entries": ["a.b.c", "d.e.f"],
+        }
+    )
+    assert obj.priority == 12
+    assert obj.entries == ["a.b.c", "d.e.f"]
+
+
+def test_load_scenery_group_from_file(tmp_path, monkeypatch):
+    cfg = {
+        "id": "openrct2sg.scenery_group.t",
+        "name": "G",
+        "object_type": "scenery_group",
+        "entries": ["a.b.c"],
+    }
+    (tmp_path / "group.json").write_text(json.dumps(cfg))
+    monkeypatch.chdir(tmp_path)
+    obj = load_scenery_group(tmp_path / "group.json")
+    assert obj.entries == ["a.b.c"]

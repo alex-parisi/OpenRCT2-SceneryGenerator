@@ -443,3 +443,88 @@ def test_num_pose_groups_returns_one_when_frame_offsets_empty():
     obj.is_animated = True
     obj.frame_offsets = []
     assert obj.num_pose_groups == 1
+
+
+# --------------------------------------------------------------------------
+# Banner / path-addition renderers
+# --------------------------------------------------------------------------
+
+from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
+    count_path_addition_sprites,
+    render_banner,
+    render_path_addition,
+)
+
+
+def _back_front_mesh() -> Mesh:
+    """Two faces: face 0 uses a *Back*-tagged material, face 1 an untagged one,
+    so the banner split has geometry in both layers."""
+    v = np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 2]], dtype=np.float32)
+    back = Material()
+    back.is_back = True
+    return Mesh(
+        vertices=v,
+        normals=v.copy(),
+        uvs=np.zeros((4, 2), dtype=np.float32),
+        faces=np.array([[0, 1, 2], [1, 3, 2]], dtype=np.uint32),
+        face_materials=np.array([0, 1], dtype=np.uint32),
+        materials=[back, Material()],
+    )
+
+
+def test_render_banner_emits_eight_sprites():
+    imgs = render_banner(_FakeContext(), _back_front_mesh())
+    assert len(imgs) == 8
+
+
+def test_render_banner_empty_layers_are_blank():
+    # No faces -> both back and front layers blank, but still 8 slots.
+    imgs = render_banner(_FakeContext(), _empty_mesh())
+    assert len(imgs) == 8
+    assert all(img.width == 1 for img in imgs)
+
+
+@pytest.mark.parametrize(
+    ("render_as", "breakable", "n"),
+    [("lamp", False, 5), ("lamp", True, 9), ("bench", True, 9), ("bin", False, 13),
+     ("fountain", False, 5)],
+)
+def test_count_path_addition_sprites(render_as, breakable, n):
+    assert count_path_addition_sprites(render_as, breakable=breakable) == n
+
+
+def test_render_path_addition_count_matches_count_helper():
+    tri = _back_front_mesh()
+    for render_as, breakable in [("lamp", False), ("bench", True), ("fountain", False)]:
+        imgs = render_path_addition(
+            _FakeContext(), tri, None, None, render_as=render_as, breakable=breakable
+        )
+        assert len(imgs) == count_path_addition_sprites(render_as, breakable=breakable)
+
+
+def test_render_path_addition_bin_uses_broken_and_full_meshes():
+    tri = _back_front_mesh()
+    imgs = render_path_addition(
+        _FakeContext(), tri, tri, tri, render_as="bin", breakable=True
+    )
+    assert len(imgs) == 13
+
+
+def test_render_path_addition_blank_preview_when_empty():
+    imgs = render_path_addition(
+        _FakeContext(), _empty_mesh(), None, None, render_as="lamp", breakable=False
+    )
+    assert len(imgs) == 5
+    assert imgs[0].width == 1
+
+
+def test_render_banner_and_path_addition_report_progress():
+    calls: list[tuple[int, int]] = []
+    render_banner(_FakeContext(), _back_front_mesh(), progress=lambda i, n: calls.append((i, n)))
+    assert calls[-1] == (4, 4)
+    calls.clear()
+    render_path_addition(
+        _FakeContext(), _back_front_mesh(), None, None,
+        render_as="bin", breakable=True, progress=lambda i, n: calls.append((i, n)),
+    )
+    assert calls[-1] == (3, 3)

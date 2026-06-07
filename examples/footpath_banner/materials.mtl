@@ -1,0 +1,26 @@
+# Banner materials.
+#
+# The banner renderer splits the mesh by material tag (same mechanism as walls):
+# faces whose material name contains *Back* go into the rear sprite (the back
+# pole), everything else into the front sprite (the front pole + the sign). The
+# sign is *Remap1* so it recolours with the banner's primary colour
+# (Paint.Banner.cpp tints the front sprite WithPrimary).
+
+# Front pole + cross-bar (untagged -> front sprite).
+newmtl Post
+Kd 0.35 0.25 0.15
+Ks 0.1 0.1 0.1
+Ns 20.0
+
+# Rear pole. *Back* -> rendered only into the back sprite so the engine can
+# occlude peeps/objects between the two poles.
+newmtl PostBack
+Kd 0.35 0.25 0.15
+Ks 0.1 0.1 0.1
+Ns 20.0
+
+# Recolourable sign panel (primary colour).
+newmtl Remap1
+Kd 0.85 0.85 0.85
+Ks 0.2 0.2 0.2
+Ns 30.0

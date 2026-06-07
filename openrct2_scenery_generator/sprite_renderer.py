@@ -238,6 +238,16 @@ def _filter_glass(mesh: Mesh, want_glass: bool) -> Mesh:
     return _submesh(mesh, keep)
 
 
+def _filter_keep(mesh: Mesh, attr: str) -> Mesh:
+    """Sub-mesh of the faces whose material has `attr` set (the complement of
+    `_filter_side`'s drop). Used to peel the banner's back-pole layer."""
+    keep = np.array(
+        [getattr(mesh.materials[m], attr) for m in mesh.face_materials],
+        dtype=bool,
+    )
+    return _submesh(mesh, keep)
+
+
 def _filter_side(mesh: Mesh, *, drop_attr: str) -> Mesh:
     """Sub-mesh excluding faces whose material has `drop_attr` set. Used to peel
     the front block (drop `is_back`) and back block (drop `is_front`) for
@@ -414,4 +424,119 @@ def render_large_scenery(
         images.extend(_render_4_rotations(context, sub, float(cx), float(cz), corners))
         if progress is not None:
             progress(seq + 2, total)
+    return images
+
+
+# ---------------------------------------------------------------------------
+# Banners (footpath_banner)
+# ---------------------------------------------------------------------------
+
+
+def render_banner(
+    context: Context,
+    combined: Mesh,
+    units_per_tile: float = TILE_SIZE,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[IndexedImage]:
+    """Render a banner sprite set in OpenRCT2 image order: for each of the 4
+    cardinal directions, a back-pole sprite then a front (pole + sign) sprite, so
+    the engine indexes them as `(direction << 1) + offset` (Paint.Banner.cpp:107).
+
+    The engine paints both sprites at the tile reference (screen {0,0},
+    Paint.Banner.cpp:110), so each layer is rendered anchored at the tile centre
+    (model origin) under VIEWS[direction] -- the same anchor small scenery uses,
+    needing no extra calibration. The mesh is split by material tag: the back
+    layer is the faces tagged `Back`; the front layer is everything else (faces
+    tagged `Front` plus untagged geometry). `units_per_tile` is unused (the centre
+    anchor is scale-free) but kept for signature parity with the other renderers.
+    """
+    del units_per_tile
+    back = _filter_keep(combined, "is_back")
+    front = _filter_side(combined, drop_attr="is_back")
+    origin = np.zeros(3, dtype=np.float64)
+    images: list[IndexedImage] = []
+    for d in range(4):
+        for layer in (back, front):
+            if layer.faces.shape[0] == 0:
+                images.append(IndexedImage.blank(1, 1))
+            else:
+                images.append(_render_scene_view(context, layer, origin, VIEWS[d]))
+        if progress is not None:
+            progress(d + 1, 4)
+    return images
+
+
+# ---------------------------------------------------------------------------
+# Path additions (footpath_item)
+# ---------------------------------------------------------------------------
+
+
+def _edges_by_dir(units_per_tile: float) -> list[tuple[float, float]]:
+    """Per-direction tile-edge midpoint offsets in OBJ units, scaled to the
+    authored render scale. A path addition sits on a tile edge (not the centre
+    like small scenery, nor a corner like large scenery); the four entries are the
+    midpoints of the NE/SE/SW/NW edges. NOTE: this is the starting anchor for the
+    edge sprites and the exact offset may need a pixel pass against the running
+    game (cf. the wall _WALL_VIEW_SHIFT calibration)."""
+    h = units_per_tile / 2.0
+    return [(h, 0.0), (0.0, h), (-h, 0.0), (0.0, -h)]
+
+
+def count_path_addition_sprites(render_as: str, *, breakable: bool) -> int:
+    """1 menu preview + 4 edge sprites, plus a 4-sprite broken block (bins always,
+    lamps/benches when breakable) and a 4-sprite full block (bins only). Matches
+    the vanilla counts: lamp/bench 5 or 9, bin 13, fountain 5."""
+    n = 1 + 4
+    if render_as == "bin":
+        return n + 4 + 4
+    if breakable and render_as in ("lamp", "bench"):
+        n += 4
+    return n
+
+
+def render_path_addition(
+    context: Context,
+    normal: Mesh,
+    broken: Mesh | None,
+    full: Mesh | None,
+    *,
+    render_as: str,
+    breakable: bool,
+    units_per_tile: float = TILE_SIZE,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[IndexedImage]:
+    """Render a path-addition sprite set in OpenRCT2 image order: a menu preview
+    (index 0), the 4 edge sprites (NE/SE/SW/NW, indices 1-4), then -- per the
+    capability of the draw type -- a 4-sprite broken block and a 4-sprite full
+    block (Paint.PathAddition.cpp `image + offset + stateOffset`).
+
+    The edge sprites are the 4 cardinal rotations anchored at the tile-edge
+    midpoints (`_edges_by_dir`). When a `broken`/`full` mesh is omitted its block
+    reuses the normal edge sprites, so the object still has every slot the engine
+    may index. `units_per_tile` scales the edge anchors."""
+    edges = _edges_by_dir(units_per_tile)
+
+    def edge_sprites(mesh: Mesh) -> list[IndexedImage]:
+        return _render_4_rotations(context, mesh, 0.0, 0.0, edges)
+
+    # Index 0: the menu preview -- the whole object centred under VIEWS[0].
+    if normal.faces.shape[0] == 0:
+        images = [IndexedImage.blank(1, 1)]
+    else:
+        images = [_render_scene_view(context, normal, np.zeros(3, dtype=np.float64), VIEWS[0])]
+
+    normal_edges = edge_sprites(normal)
+    images.extend(normal_edges)
+    if progress is not None:
+        progress(1, 3)
+
+    if render_as == "bin" or (breakable and render_as in ("lamp", "bench")):
+        images.extend(edge_sprites(broken) if broken is not None else list(normal_edges))
+    if progress is not None:
+        progress(2, 3)
+
+    if render_as == "bin":
+        images.extend(edge_sprites(full) if full is not None else list(normal_edges))
+    if progress is not None:
+        progress(3, 3)
     return images

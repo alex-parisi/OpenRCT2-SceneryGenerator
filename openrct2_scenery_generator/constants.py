@@ -37,3 +37,13 @@ SCROLLING_MODE_NONE = 255
 
 # Default cursor for wall objects (WallObject.cpp -> CursorID::FenceDown).
 WALL_DEFAULT_CURSOR = "CURSOR_FENCE_DOWN"
+
+# Default cursor for path additions (PathAdditionObject.cpp -> CursorID::LamppostDown).
+PATH_ADDITION_DEFAULT_CURSOR = "CURSOR_LAMPPOST_DOWN"
+
+# How a path addition is drawn, as accepted by object.json `properties.renderAs`
+# (PathAdditionObject::ParseDrawType). "lamp" is the engine default.
+PATH_ADDITION_RENDER_TYPES = ["lamp", "bin", "bench", "fountain"]
+
+# Default scenery-group sort priority (SceneryGroupObject::ReadJson default).
+SCENERY_GROUP_DEFAULT_PRIORITY = 40

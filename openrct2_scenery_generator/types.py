@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 from .constants import (
     DEFAULT_CURSOR,
     DEFAULT_HEIGHT,
+    PATH_ADDITION_DEFAULT_CURSOR,
+    SCENERY_GROUP_DEFAULT_PRIORITY,
     SCROLLING_MODE_NONE,
     WALL_DEFAULT_CURSOR,
 )
@@ -132,6 +134,124 @@ class LargeScenery:
     @property
     def num_tiles(self) -> int:
         return len(self.tiles)
+
+
+@dataclass
+class Banner:
+    id: str = ""
+    original_id: str = ""
+    name: str = ""
+    authors: list[str] = field(default_factory=list)
+    version: str = "1.0"
+
+    # Render scale: OBJ units per OpenRCT2 tile (see SmallScenery).
+    units_per_tile: float = TILE_SIZE
+
+    # Gameplay / placement. Banners have no removal price or cursor in object.json
+    # (BannerObject::ReadJson reads only scrollingMode, price, flags, sceneryGroup).
+    price: float = 1.0
+    scrolling_mode: int = SCROLLING_MODE_NONE
+    scenery_group: str = ""
+
+    has_primary_colour: bool = False
+
+    # Geometry. The mesh is split into a back-pole layer (faces tagged `Back`) and
+    # a front layer (the front pole + sign; everything else), drawn as two sprites
+    # per direction so the engine can occlude between them (Paint.Banner.cpp:107).
+    meshes: list[Mesh] = field(default_factory=list)
+    model: Model = field(default_factory=Model)
+
+    preview: IndexedImage | None = None
+
+    @property
+    def num_sprites(self) -> int:
+        """4 directions x (back pole, front pole + sign)."""
+        return 8
+
+
+@dataclass
+class PathAddition:
+    id: str = ""
+    original_id: str = ""
+    name: str = ""
+    authors: list[str] = field(default_factory=list)
+    version: str = "1.0"
+
+    # Render scale: OBJ units per OpenRCT2 tile (see SmallScenery).
+    units_per_tile: float = TILE_SIZE
+
+    price: float = 1.0
+    cursor: str = PATH_ADDITION_DEFAULT_CURSOR
+    scenery_group: str = ""
+
+    # How the engine draws & indexes the sprites: one of PATH_ADDITION_RENDER_TYPES.
+    render_as: str = "lamp"
+
+    # Behaviour flags (map to object.json booleans). isAllowedOnQueue/Slope are
+    # stored inverted in the engine but exposed here in the positive sense.
+    is_breakable: bool = False
+    is_jumping_fountain_water: bool = False
+    is_jumping_fountain_snow: bool = False
+    is_allowed_on_queue: bool = True
+    is_allowed_on_slope: bool = True
+    is_television: bool = False
+
+    # Geometry: the normal object, plus optional vandalised ("broken") and, for
+    # bins, "full" variants. Each is a separate mesh set + Model placement; when a
+    # variant is absent the exporter reuses the normal edge sprites for its slots.
+    meshes: list[Mesh] = field(default_factory=list)
+    model: Model = field(default_factory=Model)
+    broken_meshes: list[Mesh] = field(default_factory=list)
+    broken_model: Model = field(default_factory=Model)
+    full_meshes: list[Mesh] = field(default_factory=list)
+    full_model: Model = field(default_factory=Model)
+
+    preview: IndexedImage | None = None
+
+    @property
+    def needs_broken(self) -> bool:
+        """Bins always carry broken sprites; lamps/benches only when breakable.
+        Fountains never do (Paint.PathAddition.cpp)."""
+        if self.render_as == "bin":
+            return True
+        return self.is_breakable and self.render_as in ("lamp", "bench")
+
+    @property
+    def needs_full(self) -> bool:
+        """Only bins carry "full" sprites."""
+        return self.render_as == "bin"
+
+    @property
+    def num_sprites(self) -> int:
+        """1 menu preview + 4 edge sprites, then +4 per broken/full block.
+        lamp/bench: 5 or 9; bin: 13; fountain: 5 (matches vanilla objects)."""
+        n = 1 + 4
+        if self.needs_broken:
+            n += 4
+        if self.needs_full:
+            n += 4
+        return n
+
+
+@dataclass
+class SceneryGroup:
+    id: str = ""
+    original_id: str = ""
+    name: str = ""
+    authors: list[str] = field(default_factory=list)
+    version: str = "1.0"
+
+    # A scenery group has no geometry; `units_per_tile` exists only so it satisfies
+    # the CLI's _SceneryObject protocol (a render Context is still constructed but
+    # never used for groups).
+    units_per_tile: float = TILE_SIZE
+
+    priority: int = SCENERY_GROUP_DEFAULT_PRIORITY
+    entries: list[str] = field(default_factory=list)
+
+    # The tab icon, drawn from a provided PNG. The engine's DrawPreview reads
+    # image+1 (SceneryGroupObject.cpp:77), so the exporter emits two icon slots.
+    preview: IndexedImage | None = None
 
 
 @dataclass

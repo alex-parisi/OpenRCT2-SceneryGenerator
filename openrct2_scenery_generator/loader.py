@@ -26,11 +26,22 @@ from openrct2_x7_renderer.types import IndexedImage, MeshFrame, Model
 from .constants import (
     DEFAULT_CURSOR,
     DEFAULT_HEIGHT,
+    PATH_ADDITION_DEFAULT_CURSOR,
+    PATH_ADDITION_RENDER_TYPES,
+    SCENERY_GROUP_DEFAULT_PRIORITY,
     SCROLLING_MODE_NONE,
     SMALL_SCENERY_SHAPES,
     WALL_DEFAULT_CURSOR,
 )
-from .types import LargeScenery, LargeSceneryTile, SmallScenery, WallScenery
+from .types import (
+    Banner,
+    LargeScenery,
+    LargeSceneryTile,
+    PathAddition,
+    SceneryGroup,
+    SmallScenery,
+    WallScenery,
+)
 
 
 def _load_units_per_tile(root: dict[str, Any]) -> float:
@@ -41,14 +52,16 @@ def _load_units_per_tile(root: dict[str, Any]) -> float:
     return upt
 
 
-def _load_header(
-    obj: SmallScenery | LargeScenery | WallScenery,
+_Identifiable = SmallScenery | LargeScenery | WallScenery | Banner | PathAddition | SceneryGroup
+_Priced = SmallScenery | LargeScenery | WallScenery | PathAddition
+
+
+def _load_identity(
+    obj: _Identifiable,
     root: dict[str, Any],
     preview: IndexedImage | None,
-    cursor_default: str,
 ) -> None:
-    """Populate the fields every scenery kind shares (identity, render scale,
-    pricing, cursor, group). Kind-specific fields are loaded by the caller."""
+    """Populate the identity + render-scale fields every object kind shares."""
     obj.id = require_string(root, "id")
     obj.original_id = optional_string(root, "original_id")
     obj.name = require_string(root, "name")
@@ -57,8 +70,19 @@ def _load_header(
     if v_str:
         obj.version = v_str
     obj.preview = preview if preview is not None else IndexedImage.blank(1, 1)
-
     obj.units_per_tile = _load_units_per_tile(root)
+
+
+def _load_header(
+    obj: _Priced,
+    root: dict[str, Any],
+    preview: IndexedImage | None,
+    cursor_default: str,
+) -> None:
+    """Populate the fields the geometry scenery kinds share (identity, render
+    scale, pricing, cursor, group). Kind-specific fields are loaded by the
+    caller."""
+    _load_identity(obj, root, preview)
     obj.price = optional_number(root, "price", 1.0)
     obj.cursor = optional_string(root, "cursor", cursor_default)
     obj.scenery_group = optional_string(root, "scenery_group")
@@ -258,9 +282,106 @@ def load_wall_scenery(json_path: Path | str) -> WallScenery:
     return build_wall_scenery(root, load_meshes(root), load_preview(root))
 
 
+def build_banner(
+    config: dict[str, Any], meshes: list[Mesh], preview: IndexedImage | None = None
+) -> Banner:
+    """Build a Banner from a parsed config dict + in-memory meshes."""
+    root = config
+    obj = Banner()
+    _load_identity(obj, root, preview)
+
+    obj.price = optional_number(root, "price", 1.0)
+    obj.scenery_group = optional_string(root, "scenery_group")
+    obj.scrolling_mode = optional_int(root, "scrolling_mode", SCROLLING_MODE_NONE)
+    obj.has_primary_colour = optional_bool(root, "has_primary_colour", False)
+
+    obj.meshes = list(meshes)
+    obj.model = _load_model(root.get("model"), len(obj.meshes))
+    return obj
+
+
+def load_banner(json_path: Path | str) -> Banner:
+    root = parse_config(json_path)
+    return build_banner(root, load_meshes(root), load_preview(root))
+
+
+def _load_meshes_for(root: dict[str, Any], key: str) -> list[Mesh]:
+    """Load the OBJ set listed under an alternate config key (e.g. the path
+    addition's optional `broken_meshes` / `full_meshes`)."""
+    return load_meshes({"meshes": root[key]})
+
+
+def build_path_addition(
+    config: dict[str, Any], meshes: list[Mesh], preview: IndexedImage | None = None
+) -> PathAddition:
+    """Build a PathAddition from a parsed config dict + in-memory meshes. The
+    optional `broken_meshes` / `full_meshes` OBJ sets (with their own
+    `broken_model` / `full_model` placements) are loaded here when present."""
+    root = config
+    obj = PathAddition()
+    _load_header(obj, root, preview, PATH_ADDITION_DEFAULT_CURSOR)
+
+    obj.render_as = optional_string(root, "render_as", "lamp")
+    if obj.render_as not in PATH_ADDITION_RENDER_TYPES:
+        raise LoadError(
+            f'Unrecognized render_as "{obj.render_as}" (expected one of '
+            f"{PATH_ADDITION_RENDER_TYPES})"
+        )
+
+    obj.is_breakable = optional_bool(root, "is_breakable", False)
+    obj.is_jumping_fountain_water = optional_bool(root, "is_jumping_fountain_water", False)
+    obj.is_jumping_fountain_snow = optional_bool(root, "is_jumping_fountain_snow", False)
+    obj.is_allowed_on_queue = optional_bool(root, "is_allowed_on_queue", True)
+    obj.is_allowed_on_slope = optional_bool(root, "is_allowed_on_slope", True)
+    obj.is_television = optional_bool(root, "is_television", False)
+
+    obj.meshes = list(meshes)
+    obj.model = _load_model(root.get("model"), len(obj.meshes))
+
+    if root.get("broken_meshes") is not None:
+        obj.broken_meshes = _load_meshes_for(root, "broken_meshes")
+        obj.broken_model = _load_model(root.get("broken_model"), len(obj.broken_meshes))
+    if root.get("full_meshes") is not None:
+        obj.full_meshes = _load_meshes_for(root, "full_meshes")
+        obj.full_model = _load_model(root.get("full_model"), len(obj.full_meshes))
+    return obj
+
+
+def load_path_addition(json_path: Path | str) -> PathAddition:
+    root = parse_config(json_path)
+    return build_path_addition(root, load_meshes(root), load_preview(root))
+
+
+def build_scenery_group(
+    config: dict[str, Any], preview: IndexedImage | None = None
+) -> SceneryGroup:
+    """Build a SceneryGroup (tab) from a parsed config dict. A group has no
+    geometry; `entries` lists the member object ids and `preview` is the tab
+    icon."""
+    root = config
+    obj = SceneryGroup()
+    _load_identity(obj, root, preview)
+
+    obj.priority = optional_int(root, "priority", SCENERY_GROUP_DEFAULT_PRIORITY)
+    obj.entries = optional_string_list(root, "entries")
+    return obj
+
+
+def load_scenery_group(json_path: Path | str) -> SceneryGroup:
+    root = parse_config(json_path)
+    return build_scenery_group(root, load_preview(root))
+
+
 def object_type_of(config: dict[str, Any]) -> str:
     """Read the scenery object type, defaulting to small scenery."""
     t = optional_string(config, "object_type", "scenery_small")
-    if t not in ("scenery_small", "scenery_large", "scenery_wall"):
+    if t not in (
+        "scenery_small",
+        "scenery_large",
+        "scenery_wall",
+        "footpath_banner",
+        "footpath_item",
+        "scenery_group",
+    ):
         raise LoadError(f'Unrecognized object_type "{t}"')
     return t
