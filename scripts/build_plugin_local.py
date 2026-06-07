@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Build the Blender extension fresh for THIS machine and its Blender.
 
-The renderer is an external PyPI package (``openrct2-x7-renderer``) shipping
+The renderer is now an external PyPI package (``openrct2-x7-renderer``) shipping
 prebuilt, Embree-vendored wheels, so there's nothing to compile here. This script
 produces a single-platform zip you can install into your local Blender right now:
 
   1. Build this repo's pure-Python front-end wheel (``openrct2_scenerygenerator``,
      ``py3-none-any``) with `uv build --wheel`.
-  2. Download the ``openrct2-x7-renderer`` wheel + numpy/pillow/pyyaml from PyPI
-     for your platform and your Blender's CPython.
+  2. Download the ``openrct2-x7-renderer`` wheel, the ``OpenRCT2-ObjectCommon``
+     shared layer, + numpy/pillow/pyyaml from PyPI for your platform and your
+     Blender's CPython.
   3. Stage the add-on with a local-only manifest (just this platform + these
      wheels) and run `blender --command extension build`.
 
-The committed scenery_renderer_addon/wheels/ and blender_manifest.toml are never touched;
+The committed <addon>/wheels/ and blender_manifest.toml are never touched;
 everything is staged in a temp dir.
 
 macOS only for now (the platform/arch mapping below covers macOS). For a
@@ -32,26 +33,19 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
-ADDON_DIR = REPO / "scenery_renderer_addon"
-
-# External renderer: PyPI dist name, wheel-filename prefix, pinned version.
-RENDERER_DIST = "openrct2-x7-renderer"
-RENDERER_PREFIX = "openrct2_x7_renderer"
-RENDERER_VERSION = "0.3.1"
-DEPS = ("numpy", "pillow", "pyyaml")
-
-
-def run(cmd: list[str], *, capture: bool = False) -> str:
-    """Run a command, echoing it; raise on failure. Return stdout if captured."""
-    print("+", " ".join(cmd))
-    res = subprocess.run(
-        cmd,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE if capture else None,
-    )
-    return res.stdout if capture else ""
+from _buildlib import (
+    ADDONS,
+    DEPS,
+    FRONTEND_PREFIX,
+    REPO,
+    objectcommon_spec,
+    one_renderer_wheel,
+    pip_download_cmd,
+    renderer_spec,
+    run,
+    set_toml_array,
+    wheels_block,
+)
 
 
 def blender_python_tag() -> tuple[str, str]:
@@ -114,17 +108,10 @@ def dep_specs() -> list[str]:
     return out.split()
 
 
-def one_renderer_wheel(d: Path) -> Path:
-    wheels = list(d.glob(f"{RENDERER_PREFIX}-*.whl"))
-    if len(wheels) != 1:
-        raise SystemExit(f"Expected one renderer wheel in {d}, found {wheels}")
-    return wheels[0]
-
-
 def build_frontend_wheel(out_dir: Path) -> Path:
     """Build this repo's pure-Python front-end wheel (py3-none-any)."""
     run(["uv", "build", "--wheel", "--out-dir", str(out_dir)])
-    wheels = list(out_dir.glob("openrct2_scenerygenerator-*.whl"))
+    wheels = list(out_dir.glob(f"{FRONTEND_PREFIX}-*.whl"))
     if len(wheels) != 1:
         raise SystemExit(f"Expected one front-end wheel in {out_dir}, found {wheels}")
     return wheels[0]
@@ -132,31 +119,16 @@ def build_frontend_wheel(out_dir: Path) -> Path:
 
 def download_pkgs(out_dir: Path, py_version: str, abi: str, pip_platforms: list[str]) -> None:
     """Download the renderer wheel + deps from PyPI for the target platform/Python."""
-    cmd = [
-        "uv",
-        "run",
-        "--with",
-        "pip",
-        "python",
-        "-m",
-        "pip",
-        "download",
-        "--only-binary=:all:",
-        "--no-deps",
-        "--python-version",
-        py_version,
-        "--implementation",
-        "cp",
-        "--abi",
-        abi,
-        "-d",
-        str(out_dir),
-    ]
-    for tag in pip_platforms:
-        cmd += ["--platform", tag]
-    cmd += [f"{RENDERER_DIST}=={RENDERER_VERSION}"]
-    cmd += dep_specs()
-    run(cmd)
+    run(
+        pip_download_cmd(
+            ["uv", "run", "--with", "pip", "python", "-m", "pip"],
+            dest=out_dir,
+            py_version=py_version,
+            abi=abi,
+            platform_tags=pip_platforms,
+            specs=[renderer_spec(), objectcommon_spec(), *dep_specs()],
+        )
+    )
 
 
 def stage_addon(stage: Path, wheels_src: Path, manifest_platform: str, addon_dir: Path) -> None:
@@ -169,20 +141,12 @@ def stage_addon(stage: Path, wheels_src: Path, manifest_platform: str, addon_dir
     for whl in wheels_src.glob("*.whl"):
         shutil.copy2(whl, stage_wheels / whl.name)
 
-    names = sorted(p.name for p in stage_wheels.glob("*.whl"))
-    wheels_block = "\n".join(["wheels = ["] + [f'    "./wheels/{n}",' for n in names] + ["]"])
-    text = (stage / "blender_manifest.toml").read_text(encoding="utf-8")
-    text, n1 = re.subn(
-        r"platforms = \[.*?\]",
-        f'platforms = ["{manifest_platform}"]',
-        text,
-        count=1,
-        flags=re.DOTALL,
-    )
-    text, n2 = re.subn(r"wheels = \[.*?\]", wheels_block, text, count=1, flags=re.DOTALL)
-    if n1 != 1 or n2 != 1:
-        raise SystemExit("Could not rewrite 'platforms'/'wheels' in the manifest.")
-    (stage / "blender_manifest.toml").write_text(text, encoding="utf-8")
+    names = [p.name for p in stage_wheels.glob("*.whl")]
+    manifest = stage / "blender_manifest.toml"
+    text = manifest.read_text(encoding="utf-8")
+    text = set_toml_array(text, "platforms", f'platforms = ["{manifest_platform}"]')
+    text = set_toml_array(text, "wheels", wheels_block(names))
+    manifest.write_text(text, encoding="utf-8")
 
 
 def verify_wheel(wheel: Path) -> None:
@@ -218,8 +182,11 @@ def main() -> None:
         action="store_true",
         help="skip the standalone import check of the renderer wheel",
     )
+    ap.add_argument(
+        "--addon", choices=ADDONS, default="scenery", help="which add-on to build"
+    )
     args = ap.parse_args()
-    addon_dir = ADDON_DIR
+    addon_dir = REPO / ADDONS[args.addon]
 
     manifest_platform, pip_platforms = local_target()
     py_version, abi = blender_python_tag()
