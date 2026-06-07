@@ -58,7 +58,9 @@ def test_render_test_path(monkeypatch):
     _patch_dispatch(monkeypatch, calls)
     cli._render(_args("s.json", test=True), {}, [])
     assert "export" not in calls
-    assert calls["export_test"]["ctx"] == ("ctx", 32.0, True)
+    # --test renders at the real in-game scale (test=False to make_context), so the
+    # preview is pixel-for-pixel what OpenRCT2 paints rather than the 8x zoom view.
+    assert calls["export_test"]["ctx"] == ("ctx", 32.0, False)
 
 
 @pytest.mark.parametrize("object_type", ["scenery_small", "scenery_large", "scenery_wall"])

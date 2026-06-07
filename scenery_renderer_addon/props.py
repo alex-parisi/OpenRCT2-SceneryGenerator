@@ -279,9 +279,6 @@ class VGSScenerySettings(PropertyGroup):
     name: StringProperty(name="Name", default="My Scenery")
     authors: StringProperty(name="Authors", description="Comma-separated", default="")
     version: StringProperty(name="Version", default="1.0")
-    preview: StringProperty(
-        name="Preview Image", description="Path to a preview image", subtype="FILE_PATH", default=""
-    )
 
     # --- Common placement --------------------------------------------------
     price: FloatProperty(name="Price", default=2.0)

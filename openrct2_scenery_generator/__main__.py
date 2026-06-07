@@ -51,7 +51,10 @@ _DISPATCH: dict[str, tuple[_Loader, _Exporter, _Exporter]] = {
 def _render(args: argparse.Namespace, root: dict[str, Any], lights: list[Light]) -> None:
     load, export, export_test = _DISPATCH[object_type_of(root)]
     obj = load(args.input)
-    context = make_context(lights, obj.units_per_tile, args.test)
+    # Always render at the real in-game scale (test=False): the --test preview
+    # should be pixel-for-pixel what OpenRCT2 paints, not the 8x TEST_ZOOM detail
+    # view. `args.test` still only selects the flat per-sprite export path below.
+    context = make_context(lights, obj.units_per_tile, False)
     if args.test:
         export_test(obj, context)
     else:

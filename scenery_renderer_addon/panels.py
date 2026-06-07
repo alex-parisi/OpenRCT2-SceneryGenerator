@@ -145,8 +145,6 @@ class VGS_PT_scenery(Panel):
             else:
                 box.label(text="No lights - using the default rig.", icon="INFO")
 
-        layout.prop(ss, "preview")
-
         col = layout.column(align=True)
         col.scale_y = 1.3
         col.operator("vgs.test_render", icon="RENDER_STILL")

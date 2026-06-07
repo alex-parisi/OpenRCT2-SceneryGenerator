@@ -20,7 +20,6 @@ from openrct2_object_common.blender.mesh_extract import (
     BASIS,
     SceneError,
     extract_mesh,
-    load_preview,
     material_base,
     object_position,
 )
@@ -260,7 +259,7 @@ def _sample_animation_poses(
 
 
 def build_config_and_meshes(context):
-    """Return (config_dict, meshes, preview) read from the active scene.
+    """Return (config_dict, meshes) read from the active scene.
 
     Raises SceneError with a user-facing message on invalid scenes.
     """
@@ -365,4 +364,4 @@ def build_config_and_meshes(context):
             ],
         })
 
-    return config, meshes, load_preview(ss.preview)
+    return config, meshes

@@ -34,13 +34,13 @@ from . import scene_to_scenery
 
 def _build_scenery_from_scene(context):
     """Main-thread step: read bpy data into a scenery object + its kind."""
-    config, meshes, preview = scene_to_scenery.build_config_and_meshes(context)
+    config, meshes = scene_to_scenery.build_config_and_meshes(context)
     obj_type = config["object_type"]
     if obj_type == "scenery_large":
-        return "large", build_large_scenery(config, meshes, preview)
+        return "large", build_large_scenery(config, meshes)
     if obj_type == "scenery_wall":
-        return "wall", build_wall_scenery(config, meshes, preview)
-    return "small", build_small_scenery(config, meshes, preview)
+        return "wall", build_wall_scenery(config, meshes)
+    return "small", build_small_scenery(config, meshes)
 
 
 class _SceneryModalBase(RenderModalBase):
@@ -77,7 +77,12 @@ class VGS_OT_test_render(_SceneryModalBase):
 
     def _render(self, payload) -> None:
         kind, obj = payload
-        ctx = make_context(self._lights, obj.units_per_tile, True)
+        # Render at the real in-game scale (test=False), not the 8x TEST_ZOOM
+        # preview scale: the Image Editor sprite should be pixel-for-pixel what
+        # OpenRCT2 paints. (No remap overrides are lost here - make_context only
+        # applies those in test mode when a config `root` is passed, which the
+        # add-on never does.)
+        ctx = make_context(self._lights, obj.units_per_tile, False)
         if kind == "large":
             export_large_scenery_test(obj, ctx, self._tmp)
         elif kind == "wall":
