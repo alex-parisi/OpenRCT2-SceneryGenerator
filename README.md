@@ -109,6 +109,13 @@ wall mechanism: faces whose material name contains `Back` go into the rear
 sprite, everything else (incl. a `Remap1` sign that recolours with
 `has_primary_colour`) into the front. See `examples/footpath_banner/`.
 
+> Model the banner running along OBJ **+Z** (the renderer places it on the tile
+> edge). The engine draws the optional **scrolling text** at a fixed 22 px above
+> the tile base; the renderer projects OBJ height at ≈12 px/unit at the default
+> scale, so centre the sign band at OBJ_Y ≈ `22/12 ≈ 1.8` (scale this with
+> `units_per_tile`) for the text to overlay it. Banners only show scrolling text
+> on 2 of the 4 viewing angles — that's vanilla behaviour.
+
 **Path additions** (`object_type: footpath_item`) set `render_as` to one of
 `lamp`, `bin`, `bench`, `fountain`. The object is modelled centred on the tile
 and rendered as 4 edge sprites (plus a menu preview); the engine places them on

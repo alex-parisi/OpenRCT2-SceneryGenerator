@@ -1,37 +1,30 @@
-# Banner demo: two posts along the tile edge (OBJ +Z) with a sign between them.
-# Rear post is *PostBack* (back sprite); front post + sign are the front sprite.
-# OBJ space: +X forward (depth), +Y up, +Z along the edge. Normals from loader.
+# Banner demo: posts along OBJ +Z; sign band centred on the engine text line.
 mtllib materials.mtl
 
-# Rear post (z ~= -1.5)
-v -0.06 0.0 -1.56
-v  0.06 0.0 -1.56
-v  0.06 1.6 -1.56
-v -0.06 1.6 -1.56
-v -0.06 0.0 -1.44
-v  0.06 0.0 -1.44
-v  0.06 1.6 -1.44
-v -0.06 1.6 -1.44
-
-# Front post (z ~= +1.5)
-v -0.06 0.0 1.44
-v  0.06 0.0 1.44
-v  0.06 1.6 1.44
-v -0.06 1.6 1.44
-v -0.06 0.0 1.56
-v  0.06 0.0 1.56
-v  0.06 1.6 1.56
-v -0.06 1.6 1.56
-
-# Sign panel (spans between the posts, near the top)
-v -0.03 1.00 -1.40
-v  0.03 1.00 -1.40
-v  0.03 1.55 -1.40
-v -0.03 1.55 -1.40
-v -0.03 1.00 1.40
-v  0.03 1.00 1.40
-v  0.03 1.55 1.40
-v -0.03 1.55 1.40
+v -0.060 0.000 -1.560
+v 0.060 0.000 -1.560
+v 0.060 2.500 -1.560
+v -0.060 2.500 -1.560
+v -0.060 0.000 -1.440
+v 0.060 0.000 -1.440
+v 0.060 2.500 -1.440
+v -0.060 2.500 -1.440
+v -0.060 0.000 1.440
+v 0.060 0.000 1.440
+v 0.060 2.500 1.440
+v -0.060 2.500 1.440
+v -0.060 0.000 1.560
+v 0.060 0.000 1.560
+v 0.060 2.500 1.560
+v -0.060 2.500 1.560
+v -0.030 1.450 -1.400
+v 0.030 1.450 -1.400
+v 0.030 2.250 -1.400
+v -0.030 2.250 -1.400
+v -0.030 1.450 1.400
+v 0.030 1.450 1.400
+v 0.030 2.250 1.400
+v -0.030 2.250 1.400
 
 usemtl PostBack
 f 1 4 3

@@ -432,6 +432,22 @@ def render_large_scenery(
 # ---------------------------------------------------------------------------
 
 
+# Per-direction banner placement, as (OBJ X, OBJ Z) fractions of one tile. A
+# banner is painted at the tile reference CORNER (screen {0,0},
+# Paint.Banner.cpp:110), so each direction's sprite must bake the offset from that
+# corner to the centre of the edge the banner occupies. These values were solved
+# from the renderer's measured OBJ->screen projection against the engine's
+# per-direction edge-centre paint positions (the kBannerBoundBoxes midpoints):
+# dir 0/3 sit on the two edges meeting the corner (near, ~0 X); dir 1/2 on the far
+# edges (~+1 tile X); Z is +/- half the edge length.
+_BANNER_TRANSLATION_FRAC = [
+    (-0.030, -0.470),
+    (0.970, -0.470),
+    (0.970, 0.470),
+    (-0.030, 0.470),
+]
+
+
 def render_banner(
     context: Context,
     combined: Mesh,
@@ -442,25 +458,24 @@ def render_banner(
     cardinal directions, a back-pole sprite then a front (pole + sign) sprite, so
     the engine indexes them as `(direction << 1) + offset` (Paint.Banner.cpp:107).
 
-    The engine paints both sprites at the tile reference (screen {0,0},
-    Paint.Banner.cpp:110), so each layer is rendered anchored at the tile centre
-    (model origin) under VIEWS[direction] -- the same anchor small scenery uses,
-    needing no extra calibration. The mesh is split by material tag: the back
-    layer is the faces tagged `Back`; the front layer is everything else (faces
-    tagged `Front` plus untagged geometry). `units_per_tile` is unused (the centre
-    anchor is scale-free) but kept for signature parity with the other renderers.
-    """
-    del units_per_tile
+    Each direction is rendered under VIEWS[direction] with the per-direction
+    world translation from `_BANNER_TRANSLATION_FRAC`, which places the banner on
+    the correct tile edge given the engine's corner ({0,0}) paint anchor. The mesh
+    is split by material tag: the back layer is the faces tagged `Back`; the front
+    layer is everything else (faces tagged `Front` plus untagged geometry). The
+    author models the banner centred at the origin, running along OBJ +Z (the edge
+    length)."""
     back = _filter_keep(combined, "is_back")
     front = _filter_side(combined, drop_attr="is_back")
-    origin = np.zeros(3, dtype=np.float64)
     images: list[IndexedImage] = []
     for d in range(4):
+        fx, fz = _BANNER_TRANSLATION_FRAC[d]
+        t = np.array([fx * units_per_tile, 0.0, fz * units_per_tile], dtype=np.float64)
         for layer in (back, front):
             if layer.faces.shape[0] == 0:
                 images.append(IndexedImage.blank(1, 1))
             else:
-                images.append(_render_scene_view(context, layer, origin, VIEWS[d]))
+                images.append(_render_scene_view(context, layer, t, VIEWS[d]))
         if progress is not None:
             progress(d + 1, 4)
     return images
@@ -470,16 +485,33 @@ def render_banner(
 # Path additions (footpath_item)
 # ---------------------------------------------------------------------------
 
+# Path-addition edge sprites are rendered CENTRED on the tile (world origin),
+# exactly like small scenery's rotations. The engine paints each edge sprite at a
+# fixed per-edge offset -- {2,16}/{16,30}/{30,16}/{16,2} in
+# Paint.PathAddition.cpp -- so it does the edge placement itself; baking an edge
+# shift into the geometry too would double the offset (the item lands ~half a tile
+# off). So the four rotations use a zero corner anchor.
+_PATH_ADDITION_CORNERS = [(0.0, 0.0)] * 4
 
-def _edges_by_dir(units_per_tile: float) -> list[tuple[float, float]]:
-    """Per-direction tile-edge midpoint offsets in OBJ units, scaled to the
-    authored render scale. A path addition sits on a tile edge (not the centre
-    like small scenery, nor a corner like large scenery); the four entries are the
-    midpoints of the NE/SE/SW/NW edges. NOTE: this is the starting anchor for the
-    edge sprites and the exact offset may need a pixel pass against the running
-    game (cf. the wall _WALL_VIEW_SHIFT calibration)."""
-    h = units_per_tile / 2.0
-    return [(h, 0.0), (0.0, h), (-h, 0.0), (0.0, -h)]
+# Scenery-window button geometry (Scenery.cpp: 66x80 button). The path-addition
+# menu sprite (image 0) is drawn at a fixed {11,16}; re-anchoring the preview so
+# its content centres in the button there makes the picker thumbnail centred.
+_SCENERY_BUTTON_W = 66
+_SCENERY_BUTTON_H = 80
+_PATH_ADDITION_PREVIEW_DRAW = (11, 16)
+
+
+def _center_in_button(img: IndexedImage, draw: tuple[int, int]) -> IndexedImage:
+    """Re-anchor a preview sprite so its content centres in the scenery-window
+    button when the window blits it at the fixed `draw` position."""
+    bx, by = draw
+    return IndexedImage(
+        width=img.width,
+        height=img.height,
+        x_offset=_SCENERY_BUTTON_W // 2 - bx - img.width // 2,
+        y_offset=_SCENERY_BUTTON_H // 2 - by - img.height // 2,
+        pixels=img.pixels,
+    )
 
 
 def count_path_addition_sprites(render_as: str, *, breakable: bool) -> int:
@@ -510,20 +542,24 @@ def render_path_addition(
     capability of the draw type -- a 4-sprite broken block and a 4-sprite full
     block (Paint.PathAddition.cpp `image + offset + stateOffset`).
 
-    The edge sprites are the 4 cardinal rotations anchored at the tile-edge
-    midpoints (`_edges_by_dir`). When a `broken`/`full` mesh is omitted its block
-    reuses the normal edge sprites, so the object still has every slot the engine
-    may index. `units_per_tile` scales the edge anchors."""
-    edges = _edges_by_dir(units_per_tile)
+    The edge sprites are the 4 cardinal rotations of the tile-centred item; the
+    engine offsets each to its edge (see `_PATH_ADDITION_CORNERS`). When a
+    `broken`/`full` mesh is omitted its block reuses the normal edge sprites, so
+    the object still has every slot the engine may index. `units_per_tile` is
+    unused (the centred anchor is scale-free) but kept for signature parity."""
+    del units_per_tile
 
     def edge_sprites(mesh: Mesh) -> list[IndexedImage]:
-        return _render_4_rotations(context, mesh, 0.0, 0.0, edges)
+        return _render_4_rotations(context, mesh, 0.0, 0.0, _PATH_ADDITION_CORNERS)
 
-    # Index 0: the menu preview -- the whole object centred under VIEWS[0].
+    # Index 0: the menu preview -- the whole object centred under VIEWS[0], then
+    # re-anchored so it sits centred in the scenery picker button (image 0 is only
+    # ever used as the menu icon, never in-world, so this is safe to retarget).
     if normal.faces.shape[0] == 0:
         images = [IndexedImage.blank(1, 1)]
     else:
-        images = [_render_scene_view(context, normal, np.zeros(3, dtype=np.float64), VIEWS[0])]
+        preview = _render_scene_view(context, normal, np.zeros(3, dtype=np.float64), VIEWS[0])
+        images = [_center_in_button(preview, _PATH_ADDITION_PREVIEW_DRAW)]
 
     normal_edges = edge_sprites(normal)
     images.extend(normal_edges)
