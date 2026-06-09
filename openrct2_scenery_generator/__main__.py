@@ -47,9 +47,7 @@ class _SceneryObject(Protocol):
 _Loader = Callable[[Path], _SceneryObject]
 _Exporter = Callable[..., None]
 
-# object_type -> (load, export, export_test). Every loader returns an object
-# with a `.units_per_tile`, and every exporter shares the same signature, so
-# the three scenery kinds dispatch uniformly.
+# object_type -> (load, export, export_test)
 _DISPATCH: dict[str, tuple[_Loader, _Exporter, _Exporter]] = {
     "scenery_large": (load_large_scenery, export_large_scenery, export_large_scenery_test),
     "scenery_wall": (load_wall_scenery, export_wall_scenery, export_wall_scenery_test),
@@ -63,9 +61,6 @@ _DISPATCH: dict[str, tuple[_Loader, _Exporter, _Exporter]] = {
 def _render(args: argparse.Namespace, root: dict[str, Any], lights: list[Light]) -> None:
     load, export, export_test = _DISPATCH[object_type_of(root)]
     obj = load(args.input)
-    # Always render at the real in-game scale (test=False): the --test preview
-    # should be pixel-for-pixel what OpenRCT2 paints, not the 8x TEST_ZOOM detail
-    # view. `args.test` still only selects the flat per-sprite export path below.
     context = make_context(lights, obj.units_per_tile, False)
     if args.test:
         export_test(obj, context)

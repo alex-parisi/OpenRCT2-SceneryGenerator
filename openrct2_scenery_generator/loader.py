@@ -91,7 +91,7 @@ def _load_header(
 
 
 def _load_model(value: Any, num_meshes: int) -> Model:
-    """Parse the single-frame `model` placement list into a Model."""
+    """Parse the single-frame model placement list into a Model."""
     if value is None:
         raise LoadError('Property "model" not found')
     arr = as_array_or_wrap(value)
@@ -106,8 +106,6 @@ def _load_model(value: Any, num_meshes: int) -> Model:
         if mi >= num_meshes or mi < -1:
             raise LoadError(f"Mesh index {mi} is out of bounds")
 
-        # MeshFrame is a frozen dataclass, so collect its fields and construct it
-        # once (position/orientation default to zero vectors when absent).
         kwargs: dict[str, Any] = {"mesh_index": int(mi)}
         for key in ("position", "orientation"):
             prop = elem.get(key)
@@ -120,8 +118,7 @@ def _load_model(value: Any, num_meshes: int) -> Model:
 
 def _load_animated_model(frames_value: Any, num_meshes: int) -> Model:
     """Parse a list of poses into a Model whose mesh entries each carry one
-    MeshFrame per pose. Every pose must list the same model entries in order;
-    they are transposed so `model.meshes[i][g]` is entry i in pose group g."""
+    MeshFrame per pose."""
     if not isinstance(frames_value, list) or len(frames_value) == 0:
         raise LoadError('Property "animation.frames" not found or is not a non-empty array')
     poses = [_load_model(p, num_meshes) for p in frames_value]
@@ -134,7 +131,7 @@ def _load_animated_model(frames_value: Any, num_meshes: int) -> Model:
 
 
 def _load_animation(obj: SmallScenery, anim: Any) -> None:
-    """Populate the animation fields + the per-pose Model from an `animation`
+    """Populate the animation fields + the per-pose Model from an animation
     config block."""
     if not isinstance(anim, dict):
         raise LoadError('Property "animation" is not an object')
@@ -275,12 +272,6 @@ def build_wall_scenery(
 
     obj.meshes = list(meshes)
 
-    # Door and animated walls both carry keyframed geometry poses in an
-    # `animation` block (the same per-pose Model shape as small scenery), not a
-    # single static `model`; each has a fixed pose count the engine's image table
-    # demands, so reject any other count up front. A door takes its own paint path
-    # (is_animated stays off) and provides DOOR_SAMPLE_FRAMES poses (closed + 4
-    # open); a plain animated wall cycles WALL_ANIMATION_FRAMES flat frames.
     anim = root.get("animation")
     if obj.is_door:
         obj.is_animated = False
@@ -298,8 +289,7 @@ def build_wall_scenery(
 
 def _load_wall_pose_model(anim: Any, num_meshes: int, want_poses: int, kind: str) -> Model:
     """Parse a wall `animation` block into a per-pose Model, requiring exactly
-    `want_poses` frames (the engine's image table is fixed-length, so a mismatch
-    would be indexed past in-game). `kind` names the wall sort in error text."""
+    `want_poses` frames."""
     if anim is None:
         raise LoadError(f'{kind} wall requires an "animation" block with frames')
     if not isinstance(anim, dict):
@@ -342,17 +332,14 @@ def load_banner(json_path: Path | str) -> Banner:
 
 
 def _load_meshes_for(root: dict[str, Any], key: str) -> list[Mesh]:
-    """Load the OBJ set listed under an alternate config key (e.g. the path
-    addition's optional `broken_meshes` / `full_meshes`)."""
+    """Load the OBJ set listed under an alternate config key."""
     return load_meshes({"meshes": root[key]})
 
 
 def build_path_addition(
     config: dict[str, Any], meshes: list[Mesh], preview: IndexedImage | None = None
 ) -> PathAddition:
-    """Build a PathAddition from a parsed config dict + in-memory meshes. The
-    optional `broken_meshes` / `full_meshes` OBJ sets (with their own
-    `broken_model` / `full_model` placements) are loaded here when present."""
+    """Build a PathAddition from a parsed config dict + in-memory meshes."""
     root = config
     obj = PathAddition()
     _load_header(obj, root, preview, PATH_ADDITION_DEFAULT_CURSOR)
@@ -391,9 +378,7 @@ def load_path_addition(json_path: Path | str) -> PathAddition:
 def build_scenery_group(
     config: dict[str, Any], preview: IndexedImage | None = None
 ) -> SceneryGroup:
-    """Build a SceneryGroup (tab) from a parsed config dict. A group has no
-    geometry; `entries` lists the member object ids and `preview` is the tab
-    icon."""
+    """Build a SceneryGroup (tab) from a parsed config dict."""
     root = config
     obj = SceneryGroup()
     _load_identity(obj, root, preview)

@@ -45,7 +45,6 @@ log = logging.getLogger(__name__)
 
 Scenery = SmallScenery | LargeScenery | WallScenery | Banner | PathAddition | SceneryGroup
 ProgressFn = Callable[[int, int], None]
-# (obj, context, work_dir, progress) -> the object.json "images" list.
 RenderSprites = Callable[[Any, Context, Path, ProgressFn | None], list[str]]
 
 
@@ -78,11 +77,6 @@ def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
         properties["animationMask"] = obj.animation_mask
         properties["numFrames"] = obj.num_frames
         properties["frameOffsets"] = list(obj.frame_offsets)
-        # Required so the engine skips the always-on static base-parent draw
-        # (Paint.SmallScenery.cpp:193) that would otherwise overlay a frozen
-        # pose-0 ghost on the animation; it also shifts the animation image
-        # index +4 past the base group we emit (line 294). Vanilla animated
-        # scenery (e.g. rct2tt.scenery_small.gangster) sets the same flag.
         properties["SMALL_SCENERY_FLAG_VISIBLE_WHEN_ZOOMED"] = True
     if obj.scenery_group:
         properties["sceneryGroup"] = obj.scenery_group
@@ -124,8 +118,7 @@ def _export_scenery(
     progress: ProgressFn | None = None,
 ) -> None:
     """Render the sprites (or reuse a previous render) and zip object.json +
-    images.dat into the parkobj. Shared by all three scenery kinds; they differ
-    only in `obj_json` (the built metadata) and `render_sprites`."""
+    images.dat into the parkobj."""
     assemble_parkobj(
         obj_json,
         Path(parkobj_path),
@@ -177,7 +170,6 @@ def export_small_scenery_test(
         for g in range(obj.num_pose_groups):
             for d in range(4):
                 write_png(images[4 + g * 4 + d], test_dir / f"pose{g}_{d}.png")
-        # Combine the four base-pose directions into a single preview.
         write_png(combine_indexed_images(images[:4]), test_dir / "preview_combined.png")
         return
     rotations: list[IndexedImage] = []
@@ -188,18 +180,11 @@ def export_small_scenery_test(
                 img = ready.render_view(VIEWS[i])
                 write_png(img, test_dir / f"scenery_{i}.png")
                 rotations.append(img)
-    # Combine every rendered rotation (1 for non-rotatable, 4 otherwise).
     write_png(combine_indexed_images(rotations), test_dir / "preview_combined.png")
 
 
-# ---------------------------------------------------------------------------
-# Large scenery
-# ---------------------------------------------------------------------------
-
-
 def _tile_centers_xz(obj: LargeScenery) -> NDArray[np.float64]:
-    """Tile centres in OBJ horizontal (X, Z) units (1 tile = units_per_tile
-    units). OpenRCT2 tile x -> OBJ X, tile y -> OBJ Z."""
+    """Tile centers in OBJ horizontal (X, Z) units."""
     if not obj.tiles:
         return np.zeros((0, 2), dtype=np.float64)
     upt = obj.units_per_tile
@@ -226,13 +211,6 @@ def build_large_scenery_json(obj: LargeScenery) -> dict[str, Any]:
         "isPhotogenic": obj.is_photogenic,
         "tiles": [
             {
-                # Config x/y are tile indices; OpenRCT2 stores them in
-                # coordinate units (COORDS_PER_TILE per tile). The sign is
-                # negated: the renderer projects OBJ +X/+Z to the upper-right,
-                # while OpenRCT2 places map +x/+y toward the lower-left
-                # (screen = (y-x, (x+y)/2 - z)). Negating keeps the in-game
-                # footprint aligned with the rendered geometry. z/clearance are
-                # already in coordinate units.
                 "x": -t.x * COORDS_PER_TILE,
                 "y": -t.y * COORDS_PER_TILE,
                 "z": t.z,
@@ -245,8 +223,6 @@ def build_large_scenery_json(obj: LargeScenery) -> dict[str, Any]:
             for t in obj.tiles
         ],
     }
-    # Only emit scrollingMode for actual scrolling signs; otherwise omit it so
-    # OpenRCT2 defaults to "none" (255). Emitting 0 paints garbage text.
     if obj.scrolling_mode != SCROLLING_MODE_NONE:
         properties["scrollingMode"] = obj.scrolling_mode
     if obj.scenery_group:
@@ -304,19 +280,12 @@ def export_large_scenery_test(
     combined = combine_model_world(obj.meshes, obj.model)
     centers = _tile_centers_xz(obj)
     images = render_large_scenery(context, combined, centers, obj.units_per_tile)
-    # images[0..3] preview, then 4 per tile.
     for d in range(4):
         write_png(images[d], test_dir / f"preview_{d}.png")
     for seq in range(obj.num_tiles):
         for d in range(4):
             write_png(images[4 + seq * 4 + d], test_dir / f"tile{seq}_{d}.png")
-    # Combine the four whole-footprint preview directions into one image.
     write_png(combine_indexed_images(images[:4]), test_dir / "preview_combined.png")
-
-
-# ---------------------------------------------------------------------------
-# Walls (scenery_wall)
-# ---------------------------------------------------------------------------
 
 
 def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
@@ -333,21 +302,11 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
         "cursor": obj.cursor,
         "height": obj.height,
     }
-    # The glass x double-sided `+12` combo uses a separate, asymmetric layout we
-    # don't generate (Paint.Wall.cpp:229-231). Emitting both flags would make the
-    # engine index past our 12 images into nothing (silent glitch, same failure
-    # class as the vehicle-animation case). Keep glass (vanilla-common), drop
-    # double-sided.
     double_sided = obj.is_double_sided
     if double_sided and obj.has_glass:
         log.warning("glass + isDoubleSided combo is unsupported; ignoring isDoubleSided")
         double_sided = False
 
-    # An animated wall indexes `image + imageOffset + (ticks & 7) * 2`, whose
-    # stride leaves no room for the slope/glass/double-sided blocks (they'd alias
-    # the animation frames). The engine layout is flat-only, so drop those flags
-    # rather than emit a set the 16-frame image table can't satisfy (same failure
-    # class as the glass x double drop above).
     allowed_on_slope = obj.is_allowed_on_slope
     has_glass = obj.has_glass
     is_animated = obj.is_animated
@@ -359,10 +318,6 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
         has_glass = False
         double_sided = False
 
-    # A door has its own fixed 36-image table and paint path (PaintWallDoor), so
-    # the glass / double-sided blocks and the plain animation flag don't apply and
-    # would mis-index that table. isAllowedOnSlope stays: it still selects the
-    # door's slope bounding boxes.
     if obj.is_door:
         if has_glass or double_sided or is_animated:
             log.warning("door walls ignore hasGlass / isDoubleSided / isAnimated")
@@ -370,8 +325,6 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
         double_sided = False
         is_animated = False
 
-    # Emit only the flags that are set (OpenRCT2 treats absent as false; for the
-    # inverted isAllowedOnSlope, absent => can't build on slope).
     for key, val in (
         ("hasPrimaryColour", obj.has_primary_colour),
         ("hasSecondaryColour", obj.has_secondary_colour),
@@ -405,21 +358,15 @@ def _render_wall_sprites(
     progress: ProgressFn | None = None,
 ) -> list[str]:
     if obj.is_door:
-        # Fixed 36-image door table (see render_wall_door); takes precedence over
-        # the plain isAnimated path, matching PaintWall's door branch.
         images = render_wall_door(
             context, obj.meshes, obj.model, obj.units_per_tile, progress
         )
         return write_images_dat_lgx(images, object_dir)
     if obj.is_animated:
-        # Flat-only, 8 frames x 2 sprites (see render_wall_animated). The JSON
-        # builder drops slope/glass/double for animated walls to match.
         images = render_wall_animated(
             context, obj.meshes, obj.model, obj.units_per_tile, progress
         )
         return write_images_dat_lgx(images, object_dir)
-    # Flat (2) + slope (4 more); +6 for the glass overlay or the double-sided
-    # back block.
     combined = combine_model_world(obj.meshes, obj.model)
     images = render_wall(
         context,
@@ -477,14 +424,7 @@ def export_wall_scenery_test(
     )
     for i, img in enumerate(images):
         write_png(img, test_dir / f"wall_{i}.png")
-    # Walls aren't 4-way rotated; the contact sheet shows every wall sprite
-    # (flat plus any slope / glass / double-sided variants) in one image.
     write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
-
-
-# ---------------------------------------------------------------------------
-# Banners (footpath_banner)
-# ---------------------------------------------------------------------------
 
 
 def build_banner_json(obj: Banner) -> dict[str, Any]:
@@ -558,11 +498,6 @@ def export_banner_test(obj: Banner, context: Context, test_dir: Path | str = "te
     write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
 
 
-# ---------------------------------------------------------------------------
-# Path additions (footpath_item)
-# ---------------------------------------------------------------------------
-
-
 def build_path_addition_json(obj: PathAddition) -> dict[str, Any]:
     out = object_json_header(
         obj.id,
@@ -577,14 +512,10 @@ def build_path_addition_json(obj: PathAddition) -> dict[str, Any]:
         "cursor": obj.cursor,
         "price": obj.price,
     }
-    # The draw-type flag the engine pairs with renderAs (PathAdditionObject.cpp).
     draw_flag = {"bin": "isBin", "bench": "isBench", "lamp": "isLamp"}.get(obj.render_as)
     if draw_flag is not None:
         properties[draw_flag] = True
 
-    # Emit only the flags that are set. isAllowedOnQueue/Slope are inverted in the
-    # engine (absent => not allowed), so emitting `true` only when allowed yields
-    # the intended behaviour (Json::FlagType::Inverted).
     for key, val in (
         ("isBreakable", obj.is_breakable),
         ("isJumpingFountainWater", obj.is_jumping_fountain_water),
@@ -654,8 +585,7 @@ def export_path_addition(
 def export_path_addition_test(
     obj: PathAddition, context: Context, test_dir: Path | str = "test"
 ) -> None:
-    """Render the path-addition sprites for fast iteration (preview + edges,
-    plus any broken/full blocks)."""
+    """Render the path-addition sprites for fast iteration."""
     test_dir = Path(test_dir)
     test_dir.mkdir(parents=True, exist_ok=True)
     normal = combine_model_world(obj.meshes, obj.model)
@@ -669,11 +599,6 @@ def export_path_addition_test(
     for i, img in enumerate(images[1:], start=1):
         write_png(img, test_dir / f"item_{i}.png")
     write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
-
-
-# ---------------------------------------------------------------------------
-# Scenery groups (scenery_group)
-# ---------------------------------------------------------------------------
 
 
 def build_scenery_group_json(obj: SceneryGroup) -> dict[str, Any]:

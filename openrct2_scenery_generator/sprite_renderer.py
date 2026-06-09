@@ -1,12 +1,5 @@
 """
 Scenery sprite rendering.
-
-Unlike vehicles (16 sprite groups of pitch/roll/yaw track rotations), scenery
-needs only the cardinal rotations: VIEWS[i] == rotate_y(i * pi/2), so rendering
-the prepared scene under the first `num_rotations` views yields the rotation
-sprites OpenRCT2 expects. Colour remap (primary/secondary) is baked per-pixel by
-the palette region of remappable materials, exactly as for vehicles; it does
-not add sprites here.
 """
 
 from collections.abc import Callable
@@ -28,9 +21,7 @@ _IDENTITY3 = np.eye(3, dtype=np.float64)
 def _render_scene_view(
     context: Context, mesh: Mesh, translation: NDArray[np.float64], view: NDArray[np.float64]
 ) -> IndexedImage:
-    """Render a single model under a single view in its own scene. Used by the
-    wall and large-scenery paths, which re-anchor (different `translation`) per
-    view and so cannot share one finalized scene."""
+    """Render a single model under a single view in its own scene."""
     with context.begin_render() as scene:
         with scene.add_model(mesh, _IDENTITY3, translation, 0).finalize() as ready:
             return ready.render_view(view)
@@ -39,18 +30,13 @@ def _render_scene_view(
 def _render_scene_views(
     context: Context, mesh: Mesh, translation: NDArray[np.float64], views: list[NDArray[np.float64]]
 ) -> list[IndexedImage]:
-    """Render a single model under several views, sharing one finalized scene
-    (same anchor for every view)."""
+    """Render a single model under several views, sharing one finalized scene."""
     with context.begin_render() as scene:
         with scene.add_model(mesh, _IDENTITY3, translation, 0).finalize() as ready:
             return [ready.render_view(v) for v in views]
 
 # OpenRCT2 anchors large-scenery sprites at the tile's reference CORNER (paint
-# offset {0,0}), not its centre like small scenery ({15,15}). Empirically, the
-# anchor corner the engine expects ROTATES with the sprite direction: rendering
-# direction d with the world origin at tile-centre + corner[d] reproduces the
-# vanilla per-sprite offsets (x_off=-32, base aligned to the tile) for all four
-# directions. Derived by matching SDN3's sprite offsets direction-by-direction.
+# offset {0,0}), not its centre like small scenery ({15,15})
 _HALF_TILE = TILE_SIZE / 2.0
 _CORNER_BY_DIR = [
     (_HALF_TILE, _HALF_TILE),
@@ -59,30 +45,18 @@ _CORNER_BY_DIR = [
     (_HALF_TILE, -_HALF_TILE),
 ]
 
-# Reserved preview/menu image slots that precede the per-tile sprites; OpenRCT2
-# indexes per-tile sprites as `base + 4 + sequence*4 + direction`.
+# Reserved preview/menu image slots that precede the per-tile sprites.
+# OpenRCT2 indexes per-tile sprites as base + 4 + sequence*4 + direction.
 LARGE_SCENERY_PREVIEW_SLOTS = 4
 
 
-# Animated small scenery reserves a leading group of 4 "base" sprites (the
-# static depiction shown in the scenery picker and when zoomed out). The engine
-# only paints these when SMALL_SCENERY_FLAG_VISIBLE_WHEN_ZOOMED is set, which
-# also shifts the in-world animation index by +4 (Paint.SmallScenery.cpp:294)
-# and suppresses the always-on static base parent draw (line 193) that would
-# otherwise overlay a frozen pose-0 ghost on the animation.
+# Animated small scenery reserves a leading group of 4 "base" sprites
 ANIMATED_BASE_SLOTS = 4
 
 
 def count_small_scenery_sprites(
     num_rotations: int, num_pose_groups: int = 1, *, animated: bool = False
 ) -> int:
-    """Static scenery: `num_rotations` sprites. Animated scenery: a 4-sprite base
-    group, then one group of 4 rotation sprites per pose (the engine's frame
-    index hardcodes * 4 and adds +4 past the base), so
-    `4 + num_pose_groups * 4` regardless of `num_rotations`, including the
-    degenerate single-pose case, which still emits the base group. The animated
-    layout is keyed on `animated`, not on `num_pose_groups`, to match what
-    `render_small_scenery_animated` actually emits."""
     if animated:
         return ANIMATED_BASE_SLOTS + num_pose_groups * 4
     return num_rotations
@@ -93,8 +67,7 @@ def render_small_scenery(
     num_rotations: int = 4,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
-    """Render the prepared (finalized) scene under the first `num_rotations`
-    cardinal views."""
+    """Render the prepared scene under the first num_rotations cardinal views."""
     images = []
     for i in range(num_rotations):
         images.append(scene.render_view(VIEWS[i]))
@@ -106,8 +79,8 @@ def render_small_scenery(
 def _render_pose_rotations(
     context: Context, meshes: list[Mesh], model: Model, frame: int
 ) -> list[IndexedImage]:
-    """Bake pose `frame`'s placements and render all 4 cardinal rotations,
-    anchored at the tile centre (model origin)."""
+    """Bake pose frame's placements and render all 4 cardinal rotations,
+    anchored at the tile center."""
     combined = combine_model_world(meshes, model, frame=frame)
     return _render_scene_views(
         context, combined, np.zeros(3, dtype=np.float64), [VIEWS[d] for d in range(4)]
@@ -121,15 +94,7 @@ def render_small_scenery_animated(
     num_pose_groups: int,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
-    """Render an animated small-scenery sprite set in the engine's image order:
-    a leading 4-sprite base group (rendered from pose 0; the static depiction the
-    engine paints in the picker / when zoomed out), then per pose group its 4
-    cardinal rotations (group-major, direction-minor). Matches vanilla animated
-    scenery, whose in-world animation index is `4 + frame_offsets[frame] * 4 +
-    direction` (Paint.SmallScenery.cpp:293-296)."""
-    # The base group and pose group 0 are both pose 0's 4 rotations (identical
-    # renders), so render that pose once and reuse it for both.
-    # Progress units: 1 for the base (= pose 0) render, then 1 per additional pose.
+    """Render an animated small-scenery sprite set in the engine's image order"""
     base = _render_pose_rotations(context, meshes, model, 0)
     if progress is not None:
         progress(1, num_pose_groups)
@@ -146,37 +111,16 @@ def count_large_scenery_sprites(num_tiles: int) -> int:
     return LARGE_SCENERY_PREVIEW_SLOTS + 4 * num_tiles
 
 
-# Walls: a wall sprite is the panel along one diagonal, anchored at ONE END (a
-# tile corner); the engine places it on the correct edge via its paint offset,
-# so the sprite itself need not be on an edge. The panel is shifted to its -Z end
-# and rendered under VIEWS[1] (sprite 0) and VIEWS[0] (sprite 1). The author
-# models the panel running along OBJ +Z.
+# Walls:
 _WALL_FLAT_VIEWS = (1, 0)
-# Per-view half-pixel grid alignment. A panel spanning the full tile edge projects
-# to 34px when its end sits exactly on the world origin, straddling the pixel
-# grid so AA spills an extra column on each outer end, overlapping the neighbour by
-# 2px (the visible "bleed"). Nudging the anchor in Z lands it cleanly on 33px. The
-# two diagonal views fall on the grid at DIFFERENT sub-pixel phases (the iso
-# half-pixel asymmetry vanilla bakes into its hand-drawn art), so each needs its
-# own nudge: a single shared shift can match only one. With these, both flat
-# sprites hit vanilla exactly: VIEWS[1] -> x_off -31 base 15, VIEWS[0] -> x_off
-# -1 base 16. One tile edge projects to 32px (UNITS_PER_TILE / UNITS_PER_PIXEL),
-# so a half pixel is TILE_SIZE / 64.
+# Per-view half-pixel grid alignment.
 _HALF_PIXEL = TILE_SIZE / 64.0
 _WALL_VIEW_SHIFT = {
     1: -_HALF_TILE + 3.0 * _HALF_PIXEL,
     0: -_HALF_TILE + 1.0 * _HALF_PIXEL,
 }
-# One land-height step as a vertical shear of the panel end, in OBJ Y. Calibrated
-# so the slope RISE matches vanilla exactly: a slope-up sprite is +16px taller
-# than flat in BOTH diagonal views (the terrain's one-step rise). 1.34 is the
-# centre of the stable 1.32-1.36 window; below it (e.g. the old 1.26) the rise
-# rounds to +15px and the wall sits 1px low against sloped terrain.
+# One land-height step as a vertical shear of the panel end, in OBJ Y.
 _WALL_SLOPE_RISE = 1.34
-# Slope-DOWN lifts the whole panel by ~one slope step so it anchors at the raised
-# (high) corner. Tuned (with RISE=1.34) to vanilla's slope-down profile: base 0/1
-# and rise -15px in both views. 1.2975 is the centre of the stable 1.290-1.305
-# window; it sets the base/lift without disturbing the matched x-offsets.
 _WALL_SLOPE_DOWN_RAISE = 1.2975
 
 
@@ -184,14 +128,12 @@ def _shear_wall(
     combined: Mesh, sign: float, rise: float = _WALL_SLOPE_RISE, y_raise: float = 0.0
 ) -> Mesh:
     """Ramp the panel's Y along its length (Z), raising the +Z end by
-    `sign * rise` so it follows a sloped edge. `y_raise` lifts the whole panel
-    (slope-down anchors at the raised corner). Both `rise` and `y_raise` are in
-    OBJ units, so callers scale them with the authored render scale."""
+    `sign * rise` so it follows a sloped edge."""
     v = combined.vertices.astype(np.float64).copy()
     z = v[:, 2]
-    zmin, zmax = float(z.min()), float(z.max())
-    span = (zmax - zmin) or 1.0
-    t = (z - zmin) / span  # 0 at -Z end, 1 at +Z end
+    z_min, z_max = float(z.min()), float(z.max())
+    span = (z_max - z_min) or 1.0
+    t = (z - z_min) / span
     v[:, 1] += sign * rise * t + y_raise
     return Mesh(
         vertices=v.astype(np.float32),
@@ -204,12 +146,12 @@ def _shear_wall(
 
 
 def _render_wall_pair(
-    context: Context, mesh: Mesh, view_shift: dict[int, float] = _WALL_VIEW_SHIFT
+    context: Context, mesh: Mesh, view_shift=None
 ) -> list[IndexedImage]:
     """Render a wall mesh under the two diagonal views, each end-anchored with its
-    own per-view shift (the two views need different sub-pixel nudges to land on
-    the grid; see _WALL_VIEW_SHIFT). `view_shift` is in OBJ units, so callers
-    scale it with the authored render scale."""
+    own per-view shift."""
+    if view_shift is None:
+        view_shift = _WALL_VIEW_SHIFT
     out: list[IndexedImage] = []
     for v in _WALL_FLAT_VIEWS:
         translation = np.array((0.0, 0.0, view_shift[v]), dtype=np.float64)
@@ -218,9 +160,7 @@ def _render_wall_pair(
 
 
 def _submesh(mesh: Mesh, keep: NDArray[np.bool_]) -> Mesh:
-    """A mesh with only the faces selected by the boolean `keep` mask (vertices,
-    normals and materials are shared by reference; the renderer only touches
-    referenced ones)."""
+    """A mesh with only the faces selected by the boolean keep mask."""
     return Mesh(
         vertices=mesh.vertices,
         normals=mesh.normals,
@@ -232,7 +172,7 @@ def _submesh(mesh: Mesh, keep: NDArray[np.bool_]) -> Mesh:
 
 
 def _filter_glass(mesh: Mesh, want_glass: bool) -> Mesh:
-    """Sub-mesh of the faces whose material's `is_glass` matches `want_glass`."""
+    """Sub-mesh of the faces whose material's is_glass matches want_glass."""
     keep = np.array(
         [mesh.materials[m].is_glass == want_glass for m in mesh.face_materials],
         dtype=bool,
@@ -241,8 +181,7 @@ def _filter_glass(mesh: Mesh, want_glass: bool) -> Mesh:
 
 
 def _filter_keep(mesh: Mesh, attr: str) -> Mesh:
-    """Sub-mesh of the faces whose material has `attr` set (the complement of
-    `_filter_side`'s drop). Used to peel the banner's back-pole layer."""
+    """Sub-mesh of the faces whose material has attr set."""
     keep = np.array(
         [getattr(mesh.materials[m], attr) for m in mesh.face_materials],
         dtype=bool,
@@ -251,9 +190,7 @@ def _filter_keep(mesh: Mesh, attr: str) -> Mesh:
 
 
 def _filter_side(mesh: Mesh, *, drop_attr: str) -> Mesh:
-    """Sub-mesh excluding faces whose material has `drop_attr` set. Used to peel
-    the front block (drop `is_back`) and back block (drop `is_front`) for
-    double-sided walls; untagged faces have neither set so survive both."""
+    """Sub-mesh excluding faces whose material has drop_attr set."""
     keep = np.array(
         [not getattr(mesh.materials[m], drop_attr) for m in mesh.face_materials],
         dtype=bool,
@@ -263,10 +200,7 @@ def _filter_side(mesh: Mesh, *, drop_attr: str) -> Mesh:
 
 def _rotate_y180(mesh: Mesh) -> Mesh:
     """Rotate a mesh 180 deg about the vertical (Y) axis: negate X and Z on
-    vertices and normals. A proper rotation (winding/handedness preserved), so
-    the rear faces turn to face the camera. The panel's Z-range is symmetric so
-    it is unchanged (the same end-anchor and slope shear apply), while the
-    content mirrors left-right, as a wall does when viewed from behind."""
+    vertices and normals."""
     v = mesh.vertices.copy()
     v[:, 0] *= -1.0
     v[:, 2] *= -1.0
@@ -290,24 +224,22 @@ def _render_wall_block(
     *,
     rise: float = _WALL_SLOPE_RISE,
     down_raise: float = _WALL_SLOPE_DOWN_RAISE,
-    view_shift: dict[int, float] = _WALL_VIEW_SHIFT,
+        view_shift=None,
 ) -> list[IndexedImage]:
     """One wall image block: 2 flat sprites, plus (if `slope`) 4 slope-sheared
     sprites: offsets 2,3 = slope-up, 4,5 = slope-down, each in the two diagonal
-    orientations. Empty meshes yield blank placeholders so the block stays the
-    right length. The OBJ-unit anchors (`rise`, `down_raise`, `view_shift`) are
-    passed in pre-scaled to the authored render scale."""
+    orientations."""
+    if view_shift is None:
+        view_shift = _WALL_VIEW_SHIFT
     n = 6 if slope else 2
     if mesh.faces.shape[0] == 0:
         return [IndexedImage.blank(1, 1) for _ in range(n)]
-    images = _render_wall_pair(context, mesh, view_shift)  # offsets 0,1 (flat)
+    images = _render_wall_pair(context, mesh, view_shift)
     if slope:
-        # slope-up: far end raised. slope-down: far end lowered AND the whole
-        # panel lifted one step (it anchors at the raised/high corner).
-        images += _render_wall_pair(context, _shear_wall(mesh, +1.0, rise), view_shift)  # 2,3 up
+        images += _render_wall_pair(context, _shear_wall(mesh, +1.0, rise), view_shift)
         images += _render_wall_pair(
             context, _shear_wall(mesh, -1.0, rise, y_raise=down_raise), view_shift
-        )  # 4,5 down
+        )
     return images
 
 
@@ -319,25 +251,7 @@ def render_wall(
     is_double_sided: bool = False,
     units_per_tile: float = TILE_SIZE,
 ) -> list[IndexedImage]:
-    """Render a wall sprite set.
-
-    Plain: a single block of 2 (flat) or 6 (slope-allowed) sprites.
-
-    Glass: the engine always layers a translucent overlay sprite at
-    `imageIndex + 6` (Paint.Wall.cpp:148), so glass implies the full 6-slot
-    block layout: 6 opaque body sprites (non-glass faces) at offsets 0..5,
-    then 6 glass-only overlay sprites at offsets 6..11, for 12 total. Matches
-    every vanilla glass wall (all are slope-allowed, 12 images).
-
-    Double-sided: the rear-facing paint directions (1,2) read sprites at
-    `imageOffset + 6` (Paint.Wall.cpp:236-262), so the back block occupies the
-    same screen footprint as the front. Front block (0..5) = faces not tagged
-    *Back*; back block (6..11) = faces not tagged *Front*, rotated 180 deg so the
-    rear faces the camera. 12 total. (The glass x double `+12` combo is not
-    generated; callers must not set both.)
-
-    `units_per_tile` is the authored render scale; the OBJ-unit slope shear and
-    per-view grid nudges are calibrated at TILE_SIZE, so they scale with it."""
+    """Render a wall sprite set."""
     s = units_per_tile / TILE_SIZE
     anchors: dict[str, Any] = {
         "rise": _WALL_SLOPE_RISE * s,
@@ -363,10 +277,7 @@ def count_wall_sprites(
     *, is_animated: bool = False, allowed_on_slope: bool = False,
     has_glass: bool = False, is_double_sided: bool = False,
 ) -> int:
-    """Image count for a wall sprite set. Animated walls are flat-only with
-    `WALL_ANIMATION_FRAMES` frames of 2 flat sprites each (16). Otherwise: glass
-    or double-sided force the 12-slot two-block layout, a slope-allowed wall is 6,
-    and a plain flat wall is 2 (mirrors `render_wall`)."""
+    """Image count for a wall sprite set."""
     if is_animated:
         return WALL_ANIMATION_FRAMES * 2
     if has_glass or is_double_sided:
@@ -381,19 +292,7 @@ def render_wall_animated(
     units_per_tile: float = TILE_SIZE,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
-    """Render an animated wall sprite set in the engine's image order.
-
-    The engine paints an animated wall as `image + imageOffset + (ticks & 7) * 2`
-    (Paint.Wall.cpp PaintWallWall), where `imageOffset` is 0 for the directions
-    that read the first flat sprite (1, 3) and 1 for the other diagonal (0, 2).
-    So frame `f` occupies the two slots `2*f` (dir 1/3) and `2*f + 1` (dir 0/2),
-    giving `WALL_ANIMATION_FRAMES * 2` images. The `* 2` stride leaves no room for
-    the slope sprites, so animated walls are flat-only (see `render_wall`'s plain
-    flat block, whose two sprites these frames reproduce per pose).
-
-    `meshes` + `model` carry one pose per frame (`model.meshes[i][f]`), sampled
-    the same way as animated small scenery; `units_per_tile` scales the per-view
-    grid nudges as elsewhere."""
+    """Render an animated wall sprite set in the engine's image order."""
     s = units_per_tile / TILE_SIZE
     view_shift = {v: sh * s for v, sh in _WALL_VIEW_SHIFT.items()}
     images: list[IndexedImage] = []
@@ -408,18 +307,14 @@ def render_wall_animated(
     return images
 
 
-# A door's two screen orientations, as (view index, image-slot offset). The two
-# diagonals match a flat wall's pair: dir 1/3 reads the first sprite (VIEWS[1]),
-# dir 0/2 the second (VIEWS[0]); see render_wall's flat block.
+# A door's two screen orientations
 _DOOR_ORIENTATION_VIEWS = (1, 0)
 
 
 def _mirror_wall_x(mesh: Mesh) -> Mesh:
     """Reflect a wall mesh across the X=0 plane (the wall's thin axis): negate X
     on vertices and normals and reverse each triangle's winding so faces stay
-    outward-facing. This turns a door leaf's forward (+X) swing into the mirrored
-    backward (-X) swing. UVs and normals are per-vertex, so they follow the
-    flipped winding unchanged."""
+    outward-facing."""
     v = mesh.vertices.copy()
     v[:, 0] *= -1.0
     n = mesh.normals.copy()
@@ -440,19 +335,13 @@ def count_wall_door_sprites() -> int:
 
 
 # A vertex that shifts by more than this (OBJ units) between the closed and fully
-# open pose counts as part of the swinging leaf; anything stiller is the static
-# door frame. Small enough to ignore float noise, far below a real swing.
+# open pose counts as part of the swinging leaf.
 _DOOR_MOTION_EPS = 1e-4
 
 
 def _door_leaf_face_mask(closed: Mesh, opened: Mesh) -> NDArray[np.bool_]:
     """Classify each face as part of the swinging leaf (True) or the static frame
-    (False) by whether any of its vertices move between the closed and open pose.
-
-    The two combined meshes share topology (same meshes + model), so vertices
-    correspond index-for-index. If nothing moves (a door modelled as one rigid
-    piece) every face is treated as leaf, so the whole door falls into the body
-    layer and the frame layer stays empty."""
+    (False) by whether any of its vertices move between the closed and open pose."""
     moved_vertex = np.abs(closed.vertices - opened.vertices).max(axis=1) > _DOOR_MOTION_EPS
     moved_face: NDArray[np.bool_] = moved_vertex[closed.faces].any(axis=1)
     if not moved_face.any():
@@ -467,26 +356,7 @@ def render_wall_door(
     units_per_tile: float = TILE_SIZE,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
-    """Render a door-wall sprite set in the engine's image order (36 images).
-
-    The engine (Paint.Wall.cpp PaintWallDoor) indexes a door as 9 swing "groups",
-    each contributing 4 images: for the two screen diagonals (dir 1/3 then dir
-    0/2) it draws a body sprite plus the next index, under two hardcoded bounding
-    boxes -- a thin hinge-edge slab (the swinging leaf) and a top strip spanning
-    the opening (the static frame / lintel). So the layout is, per group g:
-        [4g+0] dir 1/3 leaf, [4g+1] dir 1/3 frame, [4g+2] dir 0/2 leaf, [4g+3] frame.
-
-    The 9 groups are: a closed pose, 4 forward-swing poses, then 4 backward-swing
-    poses. `model` carries `DOOR_SAMPLE_FRAMES` keyframed poses (closed + 4 open);
-    the backward groups are those 4 open poses reflected across the wall plane
-    (`_mirror_wall_x`), i.e. the leaf swinging the other way.
-
-    Geometry is split into the moving leaf (the body slot, rendered per pose) and
-    the static frame (the top slot), matching the engine's two bounding boxes so a
-    peep walking through sorts correctly under the lintel. The frame is the same
-    in every pose and is not mirrored, so it is rendered once per view and reused.
-    A door modelled as a single rigid piece classifies wholly as leaf, leaving the
-    frame layer blank."""
+    """Render a door-wall sprite set in the engine's image order."""
     s = units_per_tile / TILE_SIZE
     view_shift = {v: sh * s for v, sh in _WALL_VIEW_SHIFT.items()}
     blank = IndexedImage.blank(1, 1)
@@ -497,16 +367,12 @@ def render_wall_door(
         translation = np.array((0.0, 0.0, view_shift[view]), dtype=np.float64)
         return _render_scene_view(context, mesh, translation, VIEWS[view])
 
-    # Bake the sampled poses (closed = frame 0, then the 4 opening frames) and
-    # split each into the moving leaf and the static frame.
     sampled = [
         combine_model_world(meshes, model, frame=f) for f in range(DOOR_SAMPLE_FRAMES)
     ]
     leaf_mask = _door_leaf_face_mask(sampled[0], sampled[-1])
     frame_mesh = _submesh(sampled[0], ~leaf_mask)
 
-    # The leaf per render group: closed, the 4 forward poses, then those 4 poses
-    # reflected for the backward swing.
     forward_leaves = [_submesh(m, leaf_mask) for m in sampled[1:DOOR_SAMPLE_FRAMES]]
     leaves = [
         _submesh(sampled[0], leaf_mask),
@@ -514,7 +380,6 @@ def render_wall_door(
         *(_mirror_wall_x(m) for m in forward_leaves),
     ]
 
-    # The static frame is identical for every group, so render it once per view.
     frame_imgs = {view: render(frame_mesh, view) for view in _DOOR_ORIENTATION_VIEWS}
 
     images: list[IndexedImage] = []
@@ -528,7 +393,7 @@ def render_wall_door(
 
 def _corners_by_dir(units_per_tile: float) -> list[tuple[float, float]]:
     """Per-direction half-tile corner offsets in OBJ units, scaled to the
-    authored render scale (1 tile = `units_per_tile` OBJ units)."""
+    authored render scale."""
     h = units_per_tile / 2.0
     return [(h, h), (-h, h), (-h, -h), (h, -h)]
 
@@ -538,11 +403,12 @@ def _render_4_rotations(
     mesh: Mesh,
     cx: float,
     cz: float,
-    corners: list[tuple[float, float]] = _CORNER_BY_DIR,
+        corners=None,
 ) -> list[IndexedImage]:
     """Render the 4 cardinal rotations of `mesh`, anchoring each direction's
-    world origin at the tile's per-direction corner (centre + corner offset).
-    Returns 4 blank sprites if the mesh has no faces."""
+    world origin at the tile's per-direction corner."""
+    if corners is None:
+        corners = _CORNER_BY_DIR
     if mesh.faces.shape[0] == 0:
         return [IndexedImage.blank(1, 1) for _ in range(4)]
     out: list[IndexedImage] = []
@@ -560,22 +426,12 @@ def render_large_scenery(
     units_per_tile: float = TILE_SIZE,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
-    """Render a large-scenery sprite set in OpenRCT2 image order:
-    4 preview sprites (whole structure, centred), then per tile (in `tiles`
-    order) its 4 rotations. Each tile's geometry is the faces nearest that
-    tile's centre, re-anchored so the tile origin maps to the sprite origin.
-
-    `units_per_tile` is the authored render scale; the per-direction corner
-    anchors are half a tile in OBJ units, so they scale with it.
-
-    Progress units: 1 for the preview render, then 1 per tile.
-    """
+    """Render a large-scenery sprite set in OpenRCT2 image order."""
     images: list[IndexedImage] = []
     corners = _corners_by_dir(units_per_tile)
     num_tiles = tile_centers_xz.shape[0]
     total = 1 + num_tiles
 
-    # Preview slots 0-3: the whole structure, anchored at the footprint centre.
     anchor = (
         tile_centers_xz.mean(axis=0) if num_tiles else np.zeros(2, dtype=np.float64)
     )
@@ -596,19 +452,7 @@ def render_large_scenery(
     return images
 
 
-# ---------------------------------------------------------------------------
-# Banners (footpath_banner)
-# ---------------------------------------------------------------------------
-
-
-# Per-direction banner placement, as (OBJ X, OBJ Z) fractions of one tile. A
-# banner is painted at the tile reference CORNER (screen {0,0},
-# Paint.Banner.cpp:110), so each direction's sprite must bake the offset from that
-# corner to the centre of the edge the banner occupies. These values were solved
-# from the renderer's measured OBJ->screen projection against the engine's
-# per-direction edge-centre paint positions (the kBannerBoundBoxes midpoints):
-# dir 0/3 sit on the two edges meeting the corner (near, ~0 X); dir 1/2 on the far
-# edges (~+1 tile X); Z is +/- half the edge length.
+# Per-direction banner placement, as (OBJ X, OBJ Z) fractions of one tile.
 _BANNER_TRANSLATION_FRAC = [
     (-0.030, -0.470),
     (0.970, -0.470),
@@ -623,17 +467,7 @@ def render_banner(
     units_per_tile: float = TILE_SIZE,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
-    """Render a banner sprite set in OpenRCT2 image order: for each of the 4
-    cardinal directions, a back-pole sprite then a front (pole + sign) sprite, so
-    the engine indexes them as `(direction << 1) + offset` (Paint.Banner.cpp:107).
-
-    Each direction is rendered under VIEWS[direction] with the per-direction
-    world translation from `_BANNER_TRANSLATION_FRAC`, which places the banner on
-    the correct tile edge given the engine's corner ({0,0}) paint anchor. The mesh
-    is split by material tag: the back layer is the faces tagged `Back`; the front
-    layer is everything else (faces tagged `Front` plus untagged geometry). The
-    author models the banner centred at the origin, running along OBJ +Z (the edge
-    length)."""
+    """Render a banner sprite set in OpenRCT2 image order."""
     back = _filter_keep(combined, "is_back")
     front = _filter_side(combined, drop_attr="is_back")
     images: list[IndexedImage] = []
@@ -650,28 +484,17 @@ def render_banner(
     return images
 
 
-# ---------------------------------------------------------------------------
-# Path additions (footpath_item)
-# ---------------------------------------------------------------------------
-
-# Path-addition edge sprites are rendered CENTRED on the tile (world origin),
-# exactly like small scenery's rotations. The engine paints each edge sprite at a
-# fixed per-edge offset -- {2,16}/{16,30}/{30,16}/{16,2} in
-# Paint.PathAddition.cpp -- so it does the edge placement itself; baking an edge
-# shift into the geometry too would double the offset (the item lands ~half a tile
-# off). So the four rotations use a zero corner anchor.
+# Path additions
 _PATH_ADDITION_CORNERS = [(0.0, 0.0)] * 4
 
-# Scenery-window button geometry (Scenery.cpp: 66x80 button). The path-addition
-# menu sprite (image 0) is drawn at a fixed {11,16}; re-anchoring the preview so
-# its content centres in the button there makes the picker thumbnail centred.
+# Scenery-window button geometry
 _SCENERY_BUTTON_W = 66
 _SCENERY_BUTTON_H = 80
 _PATH_ADDITION_PREVIEW_DRAW = (11, 16)
 
 
 def _center_in_button(img: IndexedImage, draw: tuple[int, int]) -> IndexedImage:
-    """Re-anchor a preview sprite so its content centres in the scenery-window
+    """Re-anchor a preview sprite so its content centers in the scenery-window
     button when the window blits it at the fixed `draw` position."""
     bx, by = draw
     return IndexedImage(
@@ -685,8 +508,7 @@ def _center_in_button(img: IndexedImage, draw: tuple[int, int]) -> IndexedImage:
 
 def count_path_addition_sprites(render_as: str, *, breakable: bool) -> int:
     """1 menu preview + 4 edge sprites, plus a 4-sprite broken block (bins always,
-    lamps/benches when breakable) and a 4-sprite full block (bins only). Matches
-    the vanilla counts: lamp/bench 5 or 9, bin 13, fountain 5."""
+    lamps/benches when breakable) and a 4-sprite full block (bins only)."""
     n = 1 + 4
     if render_as == "bin":
         return n + 4 + 4
@@ -706,24 +528,12 @@ def render_path_addition(
     units_per_tile: float = TILE_SIZE,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
-    """Render a path-addition sprite set in OpenRCT2 image order: a menu preview
-    (index 0), the 4 edge sprites (NE/SE/SW/NW, indices 1-4), then -- per the
-    capability of the draw type -- a 4-sprite broken block and a 4-sprite full
-    block (Paint.PathAddition.cpp `image + offset + stateOffset`).
-
-    The edge sprites are the 4 cardinal rotations of the tile-centred item; the
-    engine offsets each to its edge (see `_PATH_ADDITION_CORNERS`). When a
-    `broken`/`full` mesh is omitted its block reuses the normal edge sprites, so
-    the object still has every slot the engine may index. `units_per_tile` is
-    unused (the centred anchor is scale-free) but kept for signature parity."""
+    """Render a path-addition sprite set in OpenRCT2 image order."""
     del units_per_tile
 
     def edge_sprites(mesh: Mesh) -> list[IndexedImage]:
         return _render_4_rotations(context, mesh, 0.0, 0.0, _PATH_ADDITION_CORNERS)
 
-    # Index 0: the menu preview -- the whole object centred under VIEWS[0], then
-    # re-anchored so it sits centred in the scenery picker button (image 0 is only
-    # ever used as the menu icon, never in-world, so this is safe to retarget).
     if normal.faces.shape[0] == 0:
         images = [IndexedImage.blank(1, 1)]
     else:
