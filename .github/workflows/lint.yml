@@ -12,8 +12,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # uv.lock is gitignored in this repo, so key the cache off pyproject.toml
-      # instead of the default **/uv.lock glob.
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -23,7 +21,6 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
-      # ruff doesn't import the project, so skip installing it.
       - name: Install dev dependencies
         run: uv sync --only-group dev --no-install-project
 
@@ -36,8 +33,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # uv.lock is gitignored in this repo, so key the cache off pyproject.toml
-      # instead of the default **/uv.lock glob.
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:
@@ -47,8 +42,6 @@ jobs:
       - name: Set up Python
         run: uv python install 3.11
 
-      # Full sync so the runtime deps (and the openrct2-x7-renderer wheel from
-      # PyPI) are importable for type checking.
       - name: Install project + dev deps
         run: uv sync --group dev
 

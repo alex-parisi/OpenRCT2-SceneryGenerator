@@ -47,3 +47,10 @@ PATH_ADDITION_RENDER_TYPES = ["lamp", "bin", "bench", "fountain"]
 
 # Default scenery-group sort priority (SceneryGroupObject::ReadJson default).
 SCENERY_GROUP_DEFAULT_PRIORITY = 40
+
+# Animated walls cycle a fixed 8 frames: the engine indexes
+# `image + imageOffset + (currentTicks & 7) * 2` (Paint.Wall.cpp PaintWallWall),
+# so the tick counter masks to 8 frames and each frame is 2 image slots apart.
+# That `* 2` stride collides with the slope image offsets (2..5), so an animated
+# wall is necessarily FLAT-only: 8 frames x 2 flat sprites = 16 images.
+WALL_ANIMATION_FRAMES = 8

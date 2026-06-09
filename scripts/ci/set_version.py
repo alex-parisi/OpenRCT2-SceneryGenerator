@@ -1,11 +1,5 @@
-"""Rewrite the project version in pyproject.toml and the Blender manifest.
-
-Invoked from CI before wheels are built and before the manifest is regenerated,
-so the wheels carry the release version and ``collect_wheels.py`` (which sources
-the version from pyproject.toml) lists them under the right filenames.
-
-Usage:
-    python scripts/ci/set_version.py <version>
+"""
+Rewrite the project version in pyproject.toml and the Blender manifest.
 """
 
 from __future__ import annotations
@@ -19,7 +13,6 @@ TARGETS = [
     ROOT / "pyproject.toml",
     ROOT / "scenery_renderer_addon" / "blender_manifest.toml",
 ]
-# Match the first top-level `version = "..."` assignment in each file.
 PATTERN = re.compile(r'^version\s*=\s*"[^"]*"', re.MULTILINE)
 
 

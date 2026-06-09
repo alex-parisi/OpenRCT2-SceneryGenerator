@@ -1,12 +1,6 @@
-"""Tests for images.dat emission, object.json assembly, and .parkobj zipping
-across all three scenery kinds.
-
-The native ray tracer is stubbed via a fake render context that mirrors the
-renderer's begin_render -> SceneBuilder -> FinalizedScene flow: every view
-renders a 1x1 dummy and the lifecycle (begin/add/finalize/end) is recorded.
-Everything downstream of the pixels (write_images_dat, write_png, the zip)
-runs for real against tmp_path. The build_*_json shapes are covered by
-test_scenery / test_scenery_loader; this file owns the export/file-writing path.
+"""
+Tests for images.dat emission, object.json assembly, and .parkobj zipping
+across all scenery kinds.
 """
 
 import json
@@ -72,8 +66,6 @@ def _animated(tmp_path, poses=3, **overrides):
 
 
 def _large(tmp_path, ntiles=2, **overrides):
-    # Two triangles, one near OBJ X=0 and one near OBJ X=TILE_SIZE, so the
-    # binner splits them across the two tiles.
     (tmp_path / "m.obj").write_text(
         "v 0 0 0\nv 0.2 0 0\nv 0 1 0\n"
         "v 3.3 0 0\nv 3.5 0 0\nv 3.3 1 0\n"
@@ -92,8 +84,6 @@ def _large(tmp_path, ntiles=2, **overrides):
 
 
 def _wall(tmp_path, **overrides):
-    # One Frame face + one Glass face, so the glass splitter has a material to
-    # classify by name.
     (tmp_path / "wall.mtl").write_text(
         "newmtl Frame\nKd 0.5 0.5 0.5\nnewmtl Glass\nKd 0.2 0.2 0.8\n"
     )
@@ -112,11 +102,6 @@ def _wall(tmp_path, **overrides):
     return build_wall_scenery(config, [load_mesh(tmp_path / "w.obj")])
 
 
-# --------------------------------------------------------------------------
-# Small scenery
-# --------------------------------------------------------------------------
-
-
 def test_export_small_scenery_to_writes_parkobj(tmp_path):
     obj = _small(tmp_path)
     ctx = FakeContext()
@@ -129,11 +114,8 @@ def test_export_small_scenery_to_writes_parkobj(tmp_path):
     with zipfile.ZipFile(parkobj) as zf:
         assert set(zf.namelist()) == {"object.json", "images.dat"}
         j = json.loads(zf.read("object.json"))
-    # Rotatable -> 4 rotation sprites -> images[0..3].
     assert j["images"] == ["$LGX:images.dat[0..3]"]
     assert j["objectType"] == "scenery_small"
-    # The static path opens a scene (begin), adds the model, and finalizes;
-    # cleanup runs through the `with` block's __exit__, not an explicit end.
     assert "begin" in ctx.events and "finalize" in ctx.events
     assert any(isinstance(e, tuple) and e[0] == "add" for e in ctx.events)
     assert (work / "images.dat").exists()
@@ -152,7 +134,6 @@ def test_export_small_scenery_to_animated_emits_group_block(tmp_path):
     export_small_scenery_to(obj, FakeContext(), tmp_path / "a.parkobj", tmp_path / "w")
     with zipfile.ZipFile(tmp_path / "a.parkobj") as zf:
         j = json.loads(zf.read("object.json"))
-    # 4 base + 3 pose groups * 4 rotations = 16 -> images[0..15].
     assert j["images"] == ["$LGX:images.dat[0..15]"]
     assert j["properties"]["isAnimated"] is True
 
@@ -164,7 +145,7 @@ def test_export_small_scenery_to_skip_render_reuses_images(tmp_path):
 
     ctx2 = FakeContext()
     export_small_scenery_to(obj, ctx2, tmp_path / "second.parkobj", work, skip_render=True)
-    assert ctx2.events == []  # nothing rendered
+    assert ctx2.events == []
 
     with zipfile.ZipFile(tmp_path / "second.parkobj") as zf:
         j = json.loads(zf.read("object.json"))
@@ -183,9 +164,6 @@ def test_export_small_scenery_to_skip_render_rejects_non_array_images(tmp_path):
 
 
 def test_export_small_scenery_wrapper_names_by_id(tmp_path, monkeypatch):
-    # export_small_scenery derives the filename from obj.id and writes into the
-    # given output directory using a relative "object" work dir; run from
-    # tmp_path to keep the repo clean.
     obj = _small(tmp_path)
     monkeypatch.chdir(tmp_path)
     out_dir = tmp_path / "dist"
@@ -214,8 +192,6 @@ def test_export_small_scenery_test_animated_writes_base_and_pose_pngs(tmp_path):
 
 
 def test_export_small_scenery_test_writes_combined_preview(tmp_path):
-    # The combined preview tiles the four rotations into a 2x2 grid (2x2 with
-    # the 1x1 fake renders).
     from openrct2_x7_renderer.image import read_png
 
     obj = _small(tmp_path)
@@ -251,18 +227,12 @@ def test_combine_indexed_images_single_image_no_blank_cell():
     assert (out.width, out.height) == (1, 1)
 
 
-# --------------------------------------------------------------------------
-# Large scenery
-# --------------------------------------------------------------------------
-
-
 def test_export_large_scenery_to_writes_parkobj(tmp_path):
     obj = _large(tmp_path, ntiles=2)
     export_large_scenery_to(obj, FakeContext(), tmp_path / "g.parkobj", tmp_path / "w")
     with zipfile.ZipFile(tmp_path / "g.parkobj") as zf:
         assert set(zf.namelist()) == {"object.json", "images.dat"}
         j = json.loads(zf.read("object.json"))
-    # 4 preview + 4 per tile * 2 tiles = 12 -> images[0..11].
     assert j["images"] == ["$LGX:images.dat[0..11]"]
     assert j["objectType"] == "scenery_large"
 
@@ -285,18 +255,12 @@ def test_export_large_scenery_test_writes_preview_and_tile_pngs(tmp_path):
             assert (test_dir / f"tile{seq}_{d}.png").exists()
 
 
-# --------------------------------------------------------------------------
-# Walls
-# --------------------------------------------------------------------------
-
-
 def test_export_wall_scenery_to_writes_parkobj(tmp_path):
     obj = _wall(tmp_path)
     export_wall_scenery_to(obj, FakeContext(), tmp_path / "wall.parkobj", tmp_path / "w")
     with zipfile.ZipFile(tmp_path / "wall.parkobj") as zf:
         assert set(zf.namelist()) == {"object.json", "images.dat"}
         j = json.loads(zf.read("object.json"))
-    # Flat only (no slope/glass/double) -> 2 sprites -> images[0..1].
     assert j["images"] == ["$LGX:images.dat[0..1]"]
     assert j["objectType"] == "scenery_wall"
 
@@ -306,7 +270,6 @@ def test_export_wall_scenery_to_glass_emits_twelve(tmp_path):
     export_wall_scenery_to(obj, FakeContext(), tmp_path / "wall.parkobj", tmp_path / "w")
     with zipfile.ZipFile(tmp_path / "wall.parkobj") as zf:
         j = json.loads(zf.read("object.json"))
-    # Glass forces the 6 body + 6 overlay block layout -> images[0..11].
     assert j["images"] == ["$LGX:images.dat[0..11]"]
 
 
@@ -317,18 +280,37 @@ def test_export_wall_scenery_wrapper_names_by_id(tmp_path, monkeypatch):
     assert (tmp_path / "dist" / "openrct2sg.scenery_wall.test.parkobj").exists()
 
 
+def _animated_wall(tmp_path, **overrides):
+    (tmp_path / "aw.obj").write_text(_TRI)
+    config = {
+        "id": "openrct2sg.scenery_wall.anim",
+        "name": "Anim Wall",
+        "animation": {
+            "frames": [[{"mesh_index": 0, "position": [0, 0, 0]}] for _ in range(8)]
+        },
+        **overrides,
+    }
+    return build_wall_scenery(config, [load_mesh(tmp_path / "aw.obj")])
+
+
+def test_export_animated_wall_emits_sixteen_frames(tmp_path):
+    obj = _animated_wall(tmp_path)
+    export_wall_scenery_to(obj, FakeContext(), tmp_path / "wall.parkobj", tmp_path / "w")
+    with zipfile.ZipFile(tmp_path / "wall.parkobj") as zf:
+        j = json.loads(zf.read("object.json"))
+    assert j["images"] == ["$LGX:images.dat[0..15]"]
+    assert j["properties"].get("isAnimated") is True
+
+
 def test_export_wall_scenery_test_writes_a_png_per_sprite(tmp_path):
     obj = _wall(tmp_path)
     test_dir = tmp_path / "test"
     export_wall_scenery_test(obj, FakeContext(), test_dir)
-    # Flat wall -> 2 sprites -> wall_0.png, wall_1.png.
     assert (test_dir / "wall_0.png").exists()
     assert (test_dir / "wall_1.png").exists()
 
 
 def test_export_wall_scenery_test_writes_combined_preview(tmp_path):
-    # The contact sheet tiles every wall sprite; a flat wall's 2 sprites give a
-    # 2-wide, 1-tall grid (2x1 with the 1x1 fake renders).
     from openrct2_x7_renderer.image import read_png
 
     obj = _wall(tmp_path)
@@ -338,13 +320,7 @@ def test_export_wall_scenery_test_writes_combined_preview(tmp_path):
     assert (img.width, img.height) == (2, 1)
 
 
-# --------------------------------------------------------------------------
-# Progress callbacks
-# --------------------------------------------------------------------------
-
-
 def test_export_small_scenery_to_reports_progress(tmp_path):
-    # Static small scenery: one tick per rendered rotation (4 total).
     obj = _small(tmp_path)
     calls: list[tuple[int, int]] = []
     export_small_scenery_to(
@@ -355,31 +331,26 @@ def test_export_small_scenery_to_reports_progress(tmp_path):
 
 
 def test_export_small_scenery_to_reports_progress_animated(tmp_path):
-    # Animated small scenery: one tick per pose group (base + additional).
     obj = _animated(tmp_path, poses=3)
     calls: list[tuple[int, int]] = []
     export_small_scenery_to(
         obj, FakeContext(), tmp_path / "a.parkobj", tmp_path / "w",
         progress=lambda d, t: calls.append((d, t)),
     )
-    # 3 pose groups: tick after base (pose 0), after pose 1, after pose 2.
     assert calls == [(1, 3), (2, 3), (3, 3)]
 
 
 def test_export_large_scenery_to_reports_progress(tmp_path):
-    # Large scenery: one tick for preview, then one per tile.
     obj = _large(tmp_path, ntiles=2)
     calls: list[tuple[int, int]] = []
     export_large_scenery_to(
         obj, FakeContext(), tmp_path / "g.parkobj", tmp_path / "w",
         progress=lambda d, t: calls.append((d, t)),
     )
-    # 2 tiles -> total = 3: (1,3) preview, (2,3) tile 0, (3,3) tile 1.
     assert calls == [(1, 3), (2, 3), (3, 3)]
 
 
 def test_export_wall_scenery_to_reports_progress(tmp_path):
-    # Walls render in one shot; progress fires once at completion.
     obj = _wall(tmp_path)
     calls: list[tuple[int, int]] = []
     export_wall_scenery_to(
@@ -387,11 +358,6 @@ def test_export_wall_scenery_to_reports_progress(tmp_path):
         progress=lambda d, t: calls.append((d, t)),
     )
     assert calls == [(1, 1)]
-
-
-# --------------------------------------------------------------------------
-# Additional coverage for missed branches
-# --------------------------------------------------------------------------
 
 
 def test_combine_indexed_images_empty_returns_blank():
@@ -438,14 +404,7 @@ def test_build_wall_scenery_json_includes_scenery_group(tmp_path):
     assert j["properties"]["sceneryGroup"] == "rct2.scenery_group.walls"
 
 
-# --------------------------------------------------------------------------
-# Banners
-# --------------------------------------------------------------------------
-
-
 def _banner(tmp_path, **overrides):
-    # One Back-tagged face + one untagged face, so the renderer's back/front
-    # split has geometry on both sides.
     (tmp_path / "b.mtl").write_text(
         "newmtl PostBack\nKd 0.3 0.2 0.1\nnewmtl Post\nKd 0.3 0.2 0.1\n"
     )
@@ -496,11 +455,6 @@ def test_build_banner_json_includes_scenery_group(tmp_path):
     assert j["properties"]["sceneryGroup"] == "grp.id"
 
 
-# --------------------------------------------------------------------------
-# Path additions
-# --------------------------------------------------------------------------
-
-
 def _item(tmp_path, **overrides):
     (tmp_path / "m.obj").write_text(_TRI)
     config = {
@@ -538,8 +492,6 @@ def test_build_path_addition_json_flags(tmp_path):
     assert props["renderAs"] == "bench"
     assert props["isBench"] is True
     assert props["isBreakable"] is True
-    # Allowed-on-slope defaults True -> emitted; queue set False -> omitted
-    # (inverted flag: absent => not allowed).
     assert props["isAllowedOnSlope"] is True
     assert "isAllowedOnQueue" not in props
 
@@ -552,8 +504,6 @@ def test_build_path_addition_json_includes_scenery_group(tmp_path):
 
 
 def test_path_addition_missing_broken_mesh_still_full_count(tmp_path):
-    # A breakable bench with no broken mesh reuses the normal edge sprites, so it
-    # still emits all 9 slots the engine may index.
     from openrct2_scenery_generator.exporter import export_path_addition_to
 
     obj = _item(tmp_path, render_as="bench", is_breakable=True)
@@ -562,11 +512,6 @@ def test_path_addition_missing_broken_mesh_still_full_count(tmp_path):
     with zipfile.ZipFile(tmp_path / "b.parkobj") as zf:
         j = json.loads(zf.read("object.json"))
     assert j["images"] == ["$LGX:images.dat[0..8]"]
-
-
-# --------------------------------------------------------------------------
-# Scenery groups
-# --------------------------------------------------------------------------
 
 
 def test_export_scenery_group_writes_two_icons_without_render(tmp_path):
@@ -588,10 +533,8 @@ def test_export_scenery_group_writes_two_icons_without_render(tmp_path):
     with zipfile.ZipFile(parkobj) as zf:
         j = json.loads(zf.read("object.json"))
     assert j["objectType"] == "scenery_group"
-    # Two icon slots; DrawPreview reads image+1.
     assert j["images"] == ["$LGX:images.dat[0..1]"]
     assert j["properties"] == {"priority": 7, "entries": ["a.b.c", "d.e.f"]}
-    # Groups have no geometry, so no rendering happens.
     assert ctx.events == []
 
 
@@ -635,7 +578,6 @@ def test_export_path_addition_test_writes_pngs(tmp_path):
     from openrct2_scenery_generator.exporter import export_path_addition_test
 
     test_dir = tmp_path / "test"
-    # bin with broken+full meshes to exercise both extra blocks in the test path.
     obj = _item(tmp_path, render_as="bin")
     export_path_addition_test(obj, FakeContext(), test_dir)
     assert (test_dir / "preview.png").exists()

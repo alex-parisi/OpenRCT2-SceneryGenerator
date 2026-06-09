@@ -3,6 +3,7 @@ per-object role + per-material region."""
 
 import bpy
 from bpy.types import Panel, UIList
+from openrct2_scenery_generator.constants import WALL_ANIMATION_FRAMES
 
 
 class VGS_UL_tiles(UIList):
@@ -95,16 +96,55 @@ class VGS_PT_scenery(Panel):
             box = layout.box()
             box.label(text="Wall", icon="MOD_BUILD")
             box.prop(ss, "wall_height")
+
+            # An animated wall is flat-only (the slope/glass/double-sided blocks
+            # would alias the animation frames), so grey those out while animating.
+            wall_animated = ss.is_animated and not ss.is_door
             col = box.column(align=True)
-            col.prop(ss, "is_allowed_on_slope")
-            col.prop(ss, "has_glass")
-            col.prop(ss, "is_double_sided")
+            sub = col.column(align=True)
+            sub.enabled = not wall_animated
+            sub.prop(ss, "is_allowed_on_slope")
+            sub.prop(ss, "has_glass")
+            sub.prop(ss, "is_double_sided")
             col.prop(ss, "has_tertiary_colour")
-            if ss.has_glass and ss.is_double_sided:
+            col.prop(ss, "is_opaque")
+            if ss.has_glass and ss.is_double_sided and not wall_animated:
                 box.label(
                     text="Glass + double-sided isn't supported; double-sided is dropped.",
                     icon="ERROR",
                 )
+
+            # Door and plain animation are mutually exclusive paint paths, so only
+            # offer each when the other is off.
+            if not ss.is_animated:
+                dbox = box.box()
+                dbox.prop(ss, "is_door", icon="MOD_BEVEL")
+                if ss.is_door:
+                    dbox.prop(ss, "is_long_door_animation")
+                    row = dbox.row(align=True)
+                    row.prop(ss, "use_door_sound", text="")
+                    dsub = row.row()
+                    dsub.enabled = ss.use_door_sound
+                    dsub.prop(ss, "door_sound")
+                    dbox.label(
+                        text="Door frames aren't rendered yet; the static panel is used.",
+                        icon="INFO",
+                    )
+
+            if not ss.is_door:
+                abox = box.box()
+                abox.prop(ss, "is_animated", icon="ANIM")
+                if ss.is_animated:
+                    abox.prop(ss, "animation_deform")
+                    row = abox.row(align=True)
+                    row.prop(ss, "anim_start_frame")
+                    row.prop(ss, "anim_end_frame")
+                    abox.label(
+                        text=f"Flat-only; {WALL_ANIMATION_FRAMES} frames sampled "
+                        "over this range.",
+                        icon="INFO",
+                    )
+
             box.label(text="Model the panel running along OBJ +Z.", icon="INFO")
         elif ss.object_type == "footpath_banner":
             box = layout.box()

@@ -1,10 +1,7 @@
 name: build-plugin
 
-# Package the scenery_renderer_addon Blender add-on into per-platform extension zips. The
-# renderer is the external PyPI package openrct2-x7-renderer (prebuilt
-# Embree-vendored wheels), so there's no native build here: we build this repo's
-# pure-Python front-end wheel, fetch the renderer + numpy/pillow/pyyaml from PyPI,
-# bundle them, and let Blender zip it. Triggered manually or on a tag.
+# Package the scenery_renderer_addon Blender add-on into per-platform extension zips
+
 on:
   workflow_dispatch:
   push:
@@ -12,8 +9,6 @@ on:
       - "v*"
 
 env:
-  # Blender used only to PACKAGE the extension (it just zips the wheels; any
-  # 4.2+ works). Confirmed present at download.blender.org.
   BLENDER_SERIES: "4.5"
   BLENDER_VERSION: "4.5.4"
 
@@ -30,8 +25,6 @@ jobs:
         with:
           python-version: "3.11"
 
-      # Pin the project version from the tag (or 0.0.0 for manual runs) so the
-      # front-end wheel + manifest carry the release version.
       - name: Pin version from tag
         shell: bash
         run: |
@@ -42,20 +35,15 @@ jobs:
           fi
           python scripts/ci/set_version.py "$VERSION"
 
-      # `build` makes the wheel; numpy/pillow/pyyaml are imported by
-      # collect_wheels.py to pin the bundled dep versions.
       - name: Install tooling
         run: |
           python -m pip install --upgrade pip
           pip install build "numpy>=1.26" "pillow>=10.0" "pyyaml>=6.0"
 
-      # This repo's pure-Python front-end wheel (py3-none-any, all platforms).
       - name: Build front-end wheel
         run: python -m build --wheel --outdir dist
 
-      # Stage the add-on's wheels/: drop in the front-end wheel, then let
-      # collect_wheels.py download the renderer + deps from PyPI for every target
-      # and regenerate the manifest's wheel list.
+      # Stage the add-on's wheels
       - name: Bundle wheels + regenerate manifest
         run: |
           mkdir -p scenery_renderer_addon/wheels

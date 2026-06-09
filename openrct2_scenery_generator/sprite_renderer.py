@@ -20,6 +20,8 @@ from openrct2_x7_renderer.mesh import Mesh
 from openrct2_x7_renderer.ray_trace import VIEWS, Context, FinalizedScene
 from openrct2_x7_renderer.types import IndexedImage, Model
 
+from .constants import WALL_ANIMATION_FRAMES
+
 _IDENTITY3 = np.eye(3, dtype=np.float64)
 
 
@@ -355,6 +357,55 @@ def render_wall(
             context, back, slope=True, **anchors
         )
     return _render_wall_block(context, combined, slope=allowed_on_slope, **anchors)
+
+
+def count_wall_sprites(
+    *, is_animated: bool = False, allowed_on_slope: bool = False,
+    has_glass: bool = False, is_double_sided: bool = False,
+) -> int:
+    """Image count for a wall sprite set. Animated walls are flat-only with
+    `WALL_ANIMATION_FRAMES` frames of 2 flat sprites each (16). Otherwise: glass
+    or double-sided force the 12-slot two-block layout, a slope-allowed wall is 6,
+    and a plain flat wall is 2 (mirrors `render_wall`)."""
+    if is_animated:
+        return WALL_ANIMATION_FRAMES * 2
+    if has_glass or is_double_sided:
+        return 12
+    return 6 if allowed_on_slope else 2
+
+
+def render_wall_animated(
+    context: Context,
+    meshes: list[Mesh],
+    model: Model,
+    units_per_tile: float = TILE_SIZE,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[IndexedImage]:
+    """Render an animated wall sprite set in the engine's image order.
+
+    The engine paints an animated wall as `image + imageOffset + (ticks & 7) * 2`
+    (Paint.Wall.cpp PaintWallWall), where `imageOffset` is 0 for the directions
+    that read the first flat sprite (1, 3) and 1 for the other diagonal (0, 2).
+    So frame `f` occupies the two slots `2*f` (dir 1/3) and `2*f + 1` (dir 0/2),
+    giving `WALL_ANIMATION_FRAMES * 2` images. The `* 2` stride leaves no room for
+    the slope sprites, so animated walls are flat-only (see `render_wall`'s plain
+    flat block, whose two sprites these frames reproduce per pose).
+
+    `meshes` + `model` carry one pose per frame (`model.meshes[i][f]`), sampled
+    the same way as animated small scenery; `units_per_tile` scales the per-view
+    grid nudges as elsewhere."""
+    s = units_per_tile / TILE_SIZE
+    view_shift = {v: sh * s for v, sh in _WALL_VIEW_SHIFT.items()}
+    images: list[IndexedImage] = []
+    for f in range(WALL_ANIMATION_FRAMES):
+        combined = combine_model_world(meshes, model, frame=f)
+        if combined.faces.shape[0] == 0:
+            images += [IndexedImage.blank(1, 1), IndexedImage.blank(1, 1)]
+        else:
+            images += _render_wall_pair(context, combined, view_shift)
+        if progress is not None:
+            progress(f + 1, WALL_ANIMATION_FRAMES)
+    return images
 
 
 def _corners_by_dir(units_per_tile: float) -> list[tuple[float, float]]:

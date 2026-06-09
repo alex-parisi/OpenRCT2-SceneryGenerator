@@ -1,7 +1,7 @@
 [project]
 name = "OpenRCT2-SceneryGenerator"
 version = "0.1.1"
-description = "Author and export OpenRCT2 small/large/wall scenery from meshes (renders via openrct2-x7-renderer)."
+description = "Author and export OpenRCT2 small/large/wall scenery from meshes"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "GPL-3.0-or-later"
@@ -54,9 +54,6 @@ src = ["openrct2_scenery_generator", "scripts", "tests"]
 select = ["E", "F", "I", "UP", "B", "W", "N"]
 
 [tool.ruff.lint.per-file-ignores]
-# Blender mandates operator/UIList/panel class names like `SG_OT_name`,
-# `SG_UL_name`, `SG_PT_name` (and matching bpy var names), which trip
-# pep8-naming. They can't be renamed without breaking add-on registration.
 "scenery_renderer_addon/*" = ["N801", "N802", "N806"]
 
 [tool.mypy]

@@ -1,10 +1,5 @@
-"""Tests for the CLI entrypoint (__main__).
-
-`main` is a thin wrapper over the renderer's shared `run_cli`; `_render` looks
-up the loader/exporter triple for the config's object_type and dispatches
-between the test-render and full-export paths. We stub the heavy collaborators
-(dispatch table, context creation, export) so the dispatch logic is covered
-without Embree or disk rendering.
+"""
+Tests for the CLI entrypoint (__main__).
 """
 
 import argparse
@@ -58,8 +53,6 @@ def test_render_test_path(monkeypatch):
     _patch_dispatch(monkeypatch, calls)
     cli._render(_args("s.json", test=True), {}, [])
     assert "export" not in calls
-    # --test renders at the real in-game scale (test=False to make_context), so the
-    # preview is pixel-for-pixel what OpenRCT2 paints rather than the 8x zoom view.
     assert calls["export_test"]["ctx"] == ("ctx", 32.0, False)
 
 
@@ -75,8 +68,6 @@ def test_render_test_path(monkeypatch):
     ],
 )
 def test_render_dispatches_per_object_type(monkeypatch, object_type):
-    # _render keys the loader/exporter triple off object_type_of(root); each of
-    # the three scenery kinds must reach its own dispatch entry.
     calls = {}
     _patch_dispatch(monkeypatch, calls, object_type=object_type)
     cli._render(_args("s.json"), {"object_type": object_type}, [])
@@ -84,8 +75,6 @@ def test_render_dispatches_per_object_type(monkeypatch, object_type):
 
 
 def test_real_dispatch_table_covers_every_object_type():
-    # The live table must hold an entry for each type object_type_of accepts,
-    # or _render would KeyError at runtime.
     assert set(cli._DISPATCH) == {
         "scenery_small",
         "scenery_large",
@@ -121,9 +110,6 @@ def test_main_returns_run_cli_exit_code(monkeypatch):
 
 
 def test_main_end_to_end_through_run_cli(monkeypatch, tmp_path):
-    # Drive the real run_cli (arg parsing + config read + lights) but stub the
-    # dispatch/render side, so the wiring from main -> run_cli -> _render is
-    # covered. object_type_of({}) defaults to scenery_small.
     cfg = tmp_path / "s.json"
     cfg.write_text("{}")
 
@@ -147,7 +133,6 @@ def test_main_end_to_end_through_run_cli(monkeypatch, tmp_path):
 
 
 def test_dunder_main_guard_invokes_sys_exit(monkeypatch):
-    # Cover the `sys.exit(main())` body inside `if __name__ == "__main__":`.
     import runpy
     import sys
 

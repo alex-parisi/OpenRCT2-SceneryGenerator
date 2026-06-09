@@ -1,5 +1,6 @@
-"""Tests for the small-scenery generator: sprite counts, render dispatch, and
-object.json shape. The native renderer is stubbed so this runs without Embree."""
+"""
+Tests for the small-scenery generator
+"""
 
 import numpy as np
 import pytest
@@ -104,9 +105,6 @@ def test_bad_shape_rejected(tmp_path):
         _make_scenery(tmp_path, shape="5/4")
 
 
-# --- small scenery animation (frameOffsets path) ---
-
-
 def _animation_block(poses):
     """Build an `animation` block with `poses` pose groups, ping-ponging."""
     offsets = list(range(poses)) + list(range(poses - 2, 0, -1))
@@ -140,10 +138,8 @@ def test_animated_pose_groups_and_count(tmp_path):
     obj = _make_animated(tmp_path, poses=3)
     assert obj.is_animated
     assert obj.num_pose_groups == 3
-    # Each pose carries one MeshFrame for the single model entry.
     assert len(obj.model.meshes) == 1
     assert len(obj.model.meshes[0]) == 3
-    # 4 base sprites + 3 groups * 4 rotations, regardless of is_rotatable.
     assert (
         count_small_scenery_sprites(
             obj.num_rotations, obj.num_pose_groups, animated=obj.is_animated
@@ -161,8 +157,6 @@ def test_animated_json_shape(tmp_path):
     assert props["numFrames"] == len(obj.frame_offsets)
     assert props["frameOffsets"] == obj.frame_offsets
     assert max(props["frameOffsets"]) + 1 == 3
-    # Required to suppress the engine's static base-parent draw (the frozen
-    # pose-0 ghost) and shift the animation index past the base group.
     assert props["SMALL_SCENERY_FLAG_VISIBLE_WHEN_ZOOMED"] is True
 
 
@@ -173,11 +167,10 @@ def test_animated_render_order_and_count(tmp_path):
     imgs = render_small_scenery_animated(
         _FakeContext(), obj.meshes, obj.model, obj.num_pose_groups
     )
-    assert len(imgs) == 16  # 4 base + 3 groups * 4, group-major, direction-minor
+    assert len(imgs) == 16
 
 
 def test_animated_frame_offset_pose_mismatch_rejected(tmp_path):
-    # frame_offsets references pose 3 but only 2 poses are supplied.
     with pytest.raises(LoadError):
         _make_animated(
             tmp_path,
@@ -204,8 +197,6 @@ def test_animated_negative_offset_rejected(tmp_path):
         )
 
 
-# --- large scenery ---
-
 from openrct2_scenery_generator.exporter import build_large_scenery_json  # noqa: E402
 from openrct2_scenery_generator.loader import build_large_scenery  # noqa: E402
 from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
@@ -217,11 +208,8 @@ from openrct2_x7_renderer.geometry import combine_model_world  # noqa: E402
 
 @pytest.mark.parametrize("tiles,expected", [(1, 8), (2, 12), (4, 20)])
 def test_large_count(tiles, expected):
-    # 4 preview + 4 per tile.
     assert count_large_scenery_sprites(tiles) == expected
 
-
-# --- walls ---
 
 from openrct2_scenery_generator.exporter import build_wall_scenery_json  # noqa: E402
 from openrct2_scenery_generator.loader import build_wall_scenery  # noqa: E402
@@ -229,7 +217,6 @@ from openrct2_scenery_generator.sprite_renderer import render_wall  # noqa: E402
 
 
 def _make_wall(tmp_path, *, glass=False, **overrides):
-    """A two-face wall mesh: one Frame face, one Glass face."""
     (tmp_path / "wall.mtl").write_text(
         "newmtl Frame\nKd 0.5 0.5 0.5\nnewmtl Glass\nKd 0.2 0.2 0.8\n"
     )
@@ -282,7 +269,6 @@ def test_wall_count_matches_render(tmp_path, glass, double, slope, expected):
 
 
 def _make_double_wall(tmp_path):
-    """A wall with a shared Frame face, a Front-only face, and a Back-only face."""
     (tmp_path / "d.mtl").write_text(
         "newmtl Frame\nKd 0.5 0.5 0.5\n"
         "newmtl FrontPanel\nKd 0.8 0.2 0.2\n"
@@ -309,13 +295,10 @@ def _make_double_wall(tmp_path):
 def test_front_back_material_classified(tmp_path):
     obj = _make_double_wall(tmp_path)
     by_side = {(m.is_front, m.is_back) for m in obj.meshes[0].materials}
-    # Frame=(F,F) shared, FrontPanel=(T,F), BackPanel=(F,T).
     assert by_side == {(False, False), (True, False), (False, True)}
 
 
 def test_double_sided_blocks_exclude_opposite_side(tmp_path, monkeypatch):
-    # The front block must drop Back faces and the back block must drop Front
-    # faces (shared Frame survives both). Capture each block's face count.
     from openrct2_scenery_generator import sprite_renderer as sr
     from openrct2_x7_renderer.geometry import combine_model_world
 
@@ -329,12 +312,10 @@ def test_double_sided_blocks_exclude_opposite_side(tmp_path, monkeypatch):
     obj = _make_double_wall(tmp_path)
     combined = combine_model_world(obj.meshes, obj.model)
     sr.render_wall(_FakeContext(), combined, True, has_glass=False, is_double_sided=True)
-    # Front block = Frame + FrontPanel = 2; back block = Frame + BackPanel = 2.
     assert seen == [2, 2]
 
 
 def test_glass_double_combo_refused(tmp_path, caplog):
-    # The +12 glass x double layout is unsupported: keep glass, drop double-sided.
     obj = _make_wall(tmp_path, glass=True, is_double_sided=True)
     with caplog.at_level("WARNING"):
         props = build_wall_scenery_json(obj)["properties"]
@@ -343,10 +324,118 @@ def test_glass_double_combo_refused(tmp_path, caplog):
     assert "combo is unsupported" in caplog.text
 
 
+def _wall_animation_block(frames=8):
+    """An `animation` block with `frames` wall poses (a slow horizontal slide)."""
+    return {
+        "frames": [
+            [{"mesh_index": 0, "position": [0, 0, 0], "orientation": [0, 0, 0]}]
+            for _ in range(frames)
+        ]
+    }
+
+
+def _make_animated_wall(tmp_path, frames=8, **overrides):
+    (tmp_path / "aw.obj").write_text("v 0 0 0\nv 0 0 1\nv 0 1 0\nf 1 2 3\n")
+    from openrct2_x7_renderer.mesh import load_mesh
+
+    config = {
+        "id": "openrct2sg.scenery_wall.anim",
+        "name": "Anim Wall",
+        "animation": _wall_animation_block(frames),
+        **overrides,
+    }
+    return build_wall_scenery(config, [load_mesh(tmp_path / "aw.obj")])
+
+
+def test_animated_wall_loads_eight_frames(tmp_path):
+    obj = _make_animated_wall(tmp_path)
+    assert obj.is_animated
+    assert len(obj.model.meshes[0]) == 8
+
+
+def test_animated_wall_wrong_frame_count_rejected(tmp_path):
+    with pytest.raises(LoadError):
+        _make_animated_wall(tmp_path, frames=6)
+
+
+def test_animated_wall_non_object_animation_rejected(tmp_path):
+    (tmp_path / "aw.obj").write_text("v 0 0 0\nv 0 0 1\nv 0 1 0\nf 1 2 3\n")
+    from openrct2_x7_renderer.mesh import load_mesh
+
+    with pytest.raises(LoadError):
+        build_wall_scenery(
+            {
+                "id": "openrct2sg.scenery_wall.a",
+                "name": "A",
+                "animation": "not-an-object",
+            },
+            [load_mesh(tmp_path / "aw.obj")],
+        )
+
+
+def test_animated_wall_flag_without_frames_rejected(tmp_path):
+    (tmp_path / "w.obj").write_text("v 0 0 0\nv 0 0 1\nv 0 1 0\nf 1 2 3\n")
+    from openrct2_x7_renderer.mesh import load_mesh
+
+    with pytest.raises(LoadError):
+        build_wall_scenery(
+            {
+                "id": "openrct2sg.scenery_wall.a",
+                "name": "A",
+                "is_animated": True,
+                "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+            },
+            [load_mesh(tmp_path / "w.obj")],
+        )
+
+
+def test_animated_wall_render_count(tmp_path):
+    from openrct2_scenery_generator.sprite_renderer import (
+        count_wall_sprites,
+        render_wall_animated,
+    )
+
+    obj = _make_animated_wall(tmp_path)
+    imgs = render_wall_animated(_FakeContext(), obj.meshes, obj.model, obj.units_per_tile)
+    assert len(imgs) == 16
+    assert count_wall_sprites(is_animated=True) == 16
+    # The non-animated counts mirror render_wall's block layout.
+    assert count_wall_sprites() == 2
+    assert count_wall_sprites(allowed_on_slope=True) == 6
+    assert count_wall_sprites(has_glass=True) == 12
+    assert count_wall_sprites(is_double_sided=True) == 12
+
+
+def test_render_wall_animated_blank_frames_and_progress():
+    from openrct2_scenery_generator.sprite_renderer import render_wall_animated
+    from openrct2_x7_renderer.types import MeshFrame, Model
+
+    # One model entry pointing at an empty mesh across all 8 frames: every frame's
+    # combined mesh is empty, so each emits two blank placeholders (16 total) and
+    # the progress callback still fires once per frame.
+    model = Model(meshes=[[MeshFrame(mesh_index=0) for _ in range(8)]])
+    calls: list[tuple[int, int]] = []
+    imgs = render_wall_animated(
+        _FakeContext(), [_empty_mesh()], model, progress=lambda a, b: calls.append((a, b))
+    )
+    assert len(imgs) == 16
+    assert len(calls) == 8
+
+
+def test_animated_wall_json_drops_slope_glass(tmp_path, caplog):
+    # An animated wall authored with slope/glass must emit a flat-only flag set.
+    obj = _make_animated_wall(tmp_path, is_allowed_on_slope=True, has_glass=True)
+    with caplog.at_level("WARNING"):
+        props = build_wall_scenery_json(obj)["properties"]
+    assert props.get("isAnimated") is True
+    assert "isAllowedOnSlope" not in props
+    assert "hasGlass" not in props
+    assert "flat-only" in caplog.text
+
+
 def _make_large(tmp_path, ntiles=2, **overrides):
     from openrct2_x7_renderer.mesh import load_mesh
 
-    # Two triangles, one near OBJ X=0, one near OBJ X=TILE_SIZE.
     (tmp_path / "m.obj").write_text(
         "v 0 0 0\nv 0.2 0 0\nv 0 1 0\n"
         "v 3.3 0 0\nv 3.5 0 0\nv 3.3 1 0\n"
@@ -372,8 +461,6 @@ def test_large_json_shape(tmp_path):
     assert j["objectType"] == "scenery_large"
     props = j["properties"]
     assert len(props["tiles"]) == 2
-    # Config tile index 1 -> coordinate units (32 per tile), sign negated to
-    # reconcile the renderer (+X up-right) with OpenRCT2 (+x lower-left).
     assert props["tiles"][1]["x"] == -32
     assert props["tiles"][0]["corners"] == 0xF
     assert props["hasPrimaryColour"] is True
@@ -386,13 +473,8 @@ def test_large_render_order_and_count(tmp_path):
 
     centers = np.array([[0.0, 0.0], [3.3, 0.0]])
     imgs = render_large_scenery(_FakeContext(), combined, centers)
-    # 4 preview + 4 per tile * 2 tiles.
     assert len(imgs) == count_large_scenery_sprites(2) == 12
 
-
-# --------------------------------------------------------------------------
-# Additional coverage for missed branches
-# --------------------------------------------------------------------------
 
 from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
     _render_4_rotations,
@@ -445,10 +527,6 @@ def test_num_pose_groups_returns_one_when_frame_offsets_empty():
     assert obj.num_pose_groups == 1
 
 
-# --------------------------------------------------------------------------
-# Banner / path-addition renderers
-# --------------------------------------------------------------------------
-
 from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
     count_path_addition_sprites,
     render_banner,
@@ -457,8 +535,6 @@ from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
 
 
 def _back_front_mesh() -> Mesh:
-    """Two faces: face 0 uses a *Back*-tagged material, face 1 an untagged one,
-    so the banner split has geometry in both layers."""
     v = np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 2]], dtype=np.float32)
     back = Material()
     back.is_back = True
@@ -478,7 +554,6 @@ def test_render_banner_emits_eight_sprites():
 
 
 def test_render_banner_empty_layers_are_blank():
-    # No faces -> both back and front layers blank, but still 8 slots.
     imgs = render_banner(_FakeContext(), _empty_mesh())
     assert len(imgs) == 8
     assert all(img.width == 1 for img in imgs)

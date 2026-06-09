@@ -1,10 +1,5 @@
-"""Shared constants and helpers for the Blender add-on build scripts.
-
-Used by both ``collect_wheels.py`` (CI: bundle every-platform wheels) and
-``build_plugin_local.py`` (dev: build a single-platform zip). Keeping the
-renderer pin, dependency list, and manifest rewriting in one place stops the two
-scripts from drifting; previously each carried its own copy of
-``RENDERER_VERSION``, the ``pip download`` invocation, and the manifest regex.
+"""
+Shared constants and helpers for the Blender add-on build scripts.
 """
 
 from __future__ import annotations
@@ -72,14 +67,6 @@ def pip_download_cmd(
     platform_tags: list[str],
     specs: list[str],
 ) -> list[str]:
-    """Build a ``pip download`` command for one (Python, platform) target.
-
-    ``pip_prefix`` is the interpreter+pip invocation to prepend, e.g.
-    ``[sys.executable, "-m", "pip"]`` (collect_wheels, already inside the uv env)
-    or ``["uv", "run", "--with", "pip", "python", "-m", "pip"]``
-    (build_plugin_local). Several ``platform_tags`` let pip pick each package's
-    compatible wheel (numpy and Pillow publish different OS minimums).
-    """
     cmd = [
         *pip_prefix,
         "download",

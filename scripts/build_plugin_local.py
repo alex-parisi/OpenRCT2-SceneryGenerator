@@ -1,26 +1,6 @@
 #!/usr/bin/env python3
-"""Build the Blender extension fresh for THIS machine and its Blender.
-
-The renderer is now an external PyPI package (``openrct2-x7-renderer``) shipping
-prebuilt, Embree-vendored wheels, so there's nothing to compile here. This script
-produces a single-platform zip you can install into your local Blender right now:
-
-  1. Build this repo's pure-Python front-end wheel (``openrct2_scenerygenerator``,
-     ``py3-none-any``) with `uv build --wheel`.
-  2. Download the ``openrct2-x7-renderer`` wheel, the ``OpenRCT2-ObjectCommon``
-     shared layer, + numpy/pillow/pyyaml from PyPI for your platform and your
-     Blender's CPython.
-  3. Stage the add-on with a local-only manifest (just this platform + these
-     wheels) and run `blender --command extension build`.
-
-The committed <addon>/wheels/ and blender_manifest.toml are never touched;
-everything is staged in a temp dir.
-
-macOS only for now (the platform/arch mapping below covers macOS). For a
-Linux/Windows release, use CI (.github/workflows/build-plugin.yml).
-
-Usage:
-    uv run python scripts/build_plugin_local.py [--install] [--no-verify] [-o dist]
+"""
+Build the Blender extension locally.
 """
 
 from __future__ import annotations
@@ -49,7 +29,6 @@ from _buildlib import (
 
 
 def blender_python_tag() -> tuple[str, str]:
-    """Return (python_version, abi_tag) for the `blender` on PATH, e.g. ('3.13','cp313')."""
     out = run(
         [
             "blender",
@@ -67,7 +46,6 @@ def blender_python_tag() -> tuple[str, str]:
 
 
 def local_target() -> tuple[str, list[str]]:
-    """Return (manifest_platform, pip_platform_tags) for the current macOS arch."""
     if platform.system() != "Darwin":
         raise SystemExit(
             "This script builds for macOS only.\n"
@@ -93,7 +71,6 @@ def local_target() -> tuple[str, list[str]]:
 
 
 def dep_specs() -> list[str]:
-    """Pin deps to the versions resolved in the build env."""
     out = run(
         [
             "uv",
@@ -109,7 +86,6 @@ def dep_specs() -> list[str]:
 
 
 def build_frontend_wheel(out_dir: Path) -> Path:
-    """Build this repo's pure-Python front-end wheel (py3-none-any)."""
     run(["uv", "build", "--wheel", "--out-dir", str(out_dir)])
     wheels = list(out_dir.glob(f"{FRONTEND_PREFIX}-*.whl"))
     if len(wheels) != 1:
@@ -118,7 +94,6 @@ def build_frontend_wheel(out_dir: Path) -> Path:
 
 
 def download_pkgs(out_dir: Path, py_version: str, abi: str, pip_platforms: list[str]) -> None:
-    """Download the renderer wheel + deps from PyPI for the target platform/Python."""
     run(
         pip_download_cmd(
             ["uv", "run", "--with", "pip", "python", "-m", "pip"],
@@ -132,7 +107,6 @@ def download_pkgs(out_dir: Path, py_version: str, abi: str, pip_platforms: list[
 
 
 def stage_addon(stage: Path, wheels_src: Path, manifest_platform: str, addon_dir: Path) -> None:
-    """Copy add-on source into `stage` with a local-only manifest + wheels."""
     for item in addon_dir.iterdir():
         if item.suffix in {".py", ".toml", ".json"} and item.is_file():
             shutil.copy2(item, stage / item.name)
@@ -150,7 +124,6 @@ def stage_addon(stage: Path, wheels_src: Path, manifest_platform: str, addon_dir
 
 
 def verify_wheel(wheel: Path) -> None:
-    """Import the renderer wheel in a clean env to catch an unvendored Embree."""
     run(
         [
             "uv",

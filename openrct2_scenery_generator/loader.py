@@ -31,6 +31,7 @@ from .constants import (
     SCENERY_GROUP_DEFAULT_PRIORITY,
     SCROLLING_MODE_NONE,
     SMALL_SCENERY_SHAPES,
+    WALL_ANIMATION_FRAMES,
     WALL_DEFAULT_CURSOR,
 )
 from .types import (
@@ -266,14 +267,34 @@ def build_wall_scenery(
     obj.is_double_sided = optional_bool(root, "is_double_sided", False)
     obj.is_door = optional_bool(root, "is_door", False)
     obj.is_long_door_animation = optional_bool(root, "is_long_door_animation", False)
-    obj.is_animated = optional_bool(root, "is_animated", False)
     obj.is_opaque = optional_bool(root, "is_opaque", False)
     ds = root.get("door_sound")
     if ds is not None:
         obj.door_sound = optional_int(root, "door_sound", 0)
 
     obj.meshes = list(meshes)
-    obj.model = _load_model(root.get("model"), len(obj.meshes))
+
+    # An animated wall carries one geometry pose per frame in an `animation`
+    # block (the same per-pose Model shape as small scenery), not a single
+    # `model`. The engine cycles a fixed WALL_ANIMATION_FRAMES frames, so reject
+    # any other count up front rather than emit an image table the paint code
+    # would index past.
+    anim = root.get("animation")
+    obj.is_animated = optional_bool(root, "is_animated", False) or anim is not None
+    if obj.is_animated:
+        if anim is None:
+            raise LoadError('Animated wall requires an "animation" block with frames')
+        if not isinstance(anim, dict):
+            raise LoadError('Property "animation" is not an object')
+        obj.model = _load_animated_model(anim.get("frames"), len(obj.meshes))
+        num_poses = len(obj.model.meshes[0]) if obj.model.meshes else 0
+        if num_poses != WALL_ANIMATION_FRAMES:
+            raise LoadError(
+                f"Animated walls need exactly {WALL_ANIMATION_FRAMES} animation "
+                f"frames, got {num_poses}"
+            )
+    else:
+        obj.model = _load_model(root.get("model"), len(obj.meshes))
     return obj
 
 

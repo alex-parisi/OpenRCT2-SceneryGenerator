@@ -24,6 +24,7 @@ from openrct2_object_common.blender.mesh_extract import (
     material_base,
     object_position,
 )
+from openrct2_scenery_generator.constants import WALL_ANIMATION_FRAMES
 from openrct2_scenery_generator.loader import build_scenery_group
 from openrct2_x7_renderer.constants import MaterialFlag
 from openrct2_x7_renderer.image import quantize_to_indexed
@@ -272,13 +273,16 @@ def build_config_and_meshes(context):
     depsgraph = context.evaluated_depsgraph_get()
 
     geo_objs = _geometry_objects(scene)
-    animated = ss.object_type == "scenery_small" and ss.is_animated
+    # A wall is a door OR animated, never both: the engine paints doors from their
+    # own image table and ignores the isAnimated frames, so doors don't sample.
+    small_animated = ss.object_type == "scenery_small" and ss.is_animated
+    wall_animated = ss.object_type == "scenery_wall" and ss.is_animated and not ss.is_door
 
     meshes: list[Mesh] = []
     model: list[dict] = []
     animation: dict | None = None
 
-    if animated:
+    if small_animated:
         offsets, num_poses = _frame_offsets(int(ss.animation_cycle), ss.animation_loop)
         meshes, poses = _sample_animation_poses(
             geo_objs,
@@ -295,6 +299,19 @@ def build_config_and_meshes(context):
             "frame_offsets": offsets,
             "frames": poses,
         }
+    elif wall_animated:
+        # Animated walls cycle a fixed WALL_ANIMATION_FRAMES frames with no
+        # delay/offset table (the engine advances one frame per tick), so we only
+        # sample the poses; the core fills in the rest from the frame count.
+        meshes, poses = _sample_animation_poses(
+            geo_objs,
+            scene,
+            WALL_ANIMATION_FRAMES,
+            int(ss.anim_start_frame),
+            int(ss.anim_end_frame),
+            _make_deform_predicate(ss.animation_deform),
+        )
+        animation = {"frames": poses}
     else:
         for obj in geo_objs:
             mesh = _extract(obj, depsgraph)
@@ -346,13 +363,25 @@ def build_config_and_meshes(context):
             "is_tree": ss.is_tree,
         })
     elif ss.object_type == "scenery_wall":
-        config.update({
+        # A door takes the door paint path; otherwise isAnimated drives the
+        # flat-only frame cycle. Animated walls can't carry the slope/glass/
+        # double-sided blocks (they'd alias the frames), so force those off.
+        wall_animation = ss.is_animated and not ss.is_door
+        wall_cfg: dict = {
             "height": int(ss.wall_height),
             "has_tertiary_colour": ss.has_tertiary_colour,
-            "is_allowed_on_slope": ss.is_allowed_on_slope,
-            "has_glass": ss.has_glass,
-            "is_double_sided": ss.is_double_sided,
-        })
+            "is_allowed_on_slope": (not wall_animation) and ss.is_allowed_on_slope,
+            "has_glass": (not wall_animation) and ss.has_glass,
+            "is_double_sided": (not wall_animation) and ss.is_double_sided,
+            "is_opaque": ss.is_opaque,
+            "is_animated": wall_animation,
+            "is_door": ss.is_door,
+            # The long-animation / sound options only mean anything for a door.
+            "is_long_door_animation": ss.is_door and ss.is_long_door_animation,
+        }
+        if ss.is_door and ss.use_door_sound:
+            wall_cfg["door_sound"] = int(ss.door_sound)
+        config.update(wall_cfg)
     elif ss.object_type == "footpath_banner":
         # Banner reads price / scenery_group / has_primary_colour / scrolling_mode;
         # the back/front split is per-material (Front/Back classification).

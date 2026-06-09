@@ -29,6 +29,7 @@ from .sprite_renderer import (
     render_small_scenery,
     render_small_scenery_animated,
     render_wall,
+    render_wall_animated,
 )
 from .types import (
     Banner,
@@ -341,14 +342,29 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
         log.warning("glass + isDoubleSided combo is unsupported; ignoring isDoubleSided")
         double_sided = False
 
+    # An animated wall indexes `image + imageOffset + (ticks & 7) * 2`, whose
+    # stride leaves no room for the slope/glass/double-sided blocks (they'd alias
+    # the animation frames). The engine layout is flat-only, so drop those flags
+    # rather than emit a set the 16-frame image table can't satisfy (same failure
+    # class as the glass x double drop above).
+    allowed_on_slope = obj.is_allowed_on_slope
+    has_glass = obj.has_glass
+    if obj.is_animated and (allowed_on_slope or has_glass or double_sided):
+        log.warning(
+            "animated walls are flat-only; ignoring isAllowedOnSlope/hasGlass/isDoubleSided"
+        )
+        allowed_on_slope = False
+        has_glass = False
+        double_sided = False
+
     # Emit only the flags that are set (OpenRCT2 treats absent as false; for the
     # inverted isAllowedOnSlope, absent => can't build on slope).
     for key, val in (
         ("hasPrimaryColour", obj.has_primary_colour),
         ("hasSecondaryColour", obj.has_secondary_colour),
         ("hasTertiaryColour", obj.has_tertiary_colour),
-        ("isAllowedOnSlope", obj.is_allowed_on_slope),
-        ("hasGlass", obj.has_glass),
+        ("isAllowedOnSlope", allowed_on_slope),
+        ("hasGlass", has_glass),
         ("isDoubleSided", double_sided),
         ("isDoor", obj.is_door),
         ("isLongDoorAnimation", obj.is_long_door_animation),
@@ -375,6 +391,13 @@ def _render_wall_sprites(
     object_dir: Path,
     progress: ProgressFn | None = None,
 ) -> list[str]:
+    if obj.is_animated:
+        # Flat-only, 8 frames x 2 sprites (see render_wall_animated). The JSON
+        # builder drops slope/glass/double for animated walls to match.
+        images = render_wall_animated(
+            context, obj.meshes, obj.model, obj.units_per_tile, progress
+        )
+        return write_images_dat_lgx(images, object_dir)
     # Flat (2) + slope (4 more); +6 for the glass overlay or the double-sided
     # back block.
     combined = combine_model_world(obj.meshes, obj.model)

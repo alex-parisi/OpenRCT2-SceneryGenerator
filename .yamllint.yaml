@@ -1,5 +1,3 @@
-# yamllint config — lints hand-authored scenery configs (examples/),
-# not build artifacts.
 extends: default
 
 ignore: |
@@ -7,9 +5,9 @@ ignore: |
   dist/
 
 rules:
-  document-start: disable        # scenery configs don't use a leading '---'
+  document-start: disable
   line-length:
     max: 100
     allow-non-breakable-words: true
   truthy:
-    check-keys: false            # allow bare on/off/yes if used as values
+    check-keys: false

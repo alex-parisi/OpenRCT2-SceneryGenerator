@@ -408,6 +408,38 @@ class VGSScenerySettings(PropertyGroup):
         description="Distinct front/back faces (materials marked Front/Back); rear block at +6",
         default=False,
     )
+    is_opaque: BoolProperty(
+        name="Opaque",
+        description="Wall fully occludes the tile behind it (no see-through gaps)",
+        default=False,
+    )
+    # Walls reuse `is_animated` (declared in the small-scenery section) as the
+    # plain isAnimated flag; only one object type is active at a time. Doors are
+    # their own animated sub-mode with an optional sound and a long-animation
+    # variant. NOTE: the core renderer emits only the static wall sprite block --
+    # it does not yet generate door-swing / animation frames -- so these set the
+    # object.json flags but the panel won't visually animate (same as YAML).
+    is_door: BoolProperty(
+        name="Door",
+        description="Wall is a door peeps and guests pass through",
+        default=False,
+    )
+    is_long_door_animation: BoolProperty(
+        name="Long Door Animation",
+        description="Use the longer door open/close animation timing",
+        default=False,
+    )
+    use_door_sound: BoolProperty(
+        name="Custom Door Sound",
+        description="Emit a doorSound id; off leaves it unset (engine default)",
+        default=False,
+    )
+    door_sound: IntProperty(
+        name="Door Sound",
+        description="OpenRCT2 door sound id played when the door opens",
+        default=1,
+        min=0,
+    )
 
     # --- Banner ------------------------------------------------------------
     # Banners reuse `scrolling_mode` (the sign's scrolling text) and

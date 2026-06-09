@@ -1,5 +1,7 @@
-"""Tests for shared scenery config validation, object-type dispatch, the
-tile-centre mapping, and the wall/large object.json flag emission rules."""
+"""
+Tests for shared scenery config validation, object-type dispatch, the
+tile-centre mapping, and the wall/large object.json flag emission rules.
+"""
 
 import json
 
@@ -34,9 +36,6 @@ def tri_mesh(tmp_path):
     return load_mesh(tmp_path / "m.obj")
 
 
-# --- object_type_of ---------------------------------------------------------
-
-
 def test_object_type_defaults_to_small():
     assert object_type_of({}) == "scenery_small"
 
@@ -61,9 +60,6 @@ def test_object_type_rejects_unknown():
         object_type_of({"object_type": "scenery_huge"})
 
 
-# --- units_per_tile validation ----------------------------------------------
-
-
 def _wall_config(**overrides):
     base = {
         "id": "openrct2sg.scenery_wall.t",
@@ -83,9 +79,6 @@ def test_units_per_tile_must_be_positive(tri_mesh, bad):
 def test_units_per_tile_defaults_to_tile_size(tri_mesh):
     obj = build_wall_scenery(_wall_config(), [tri_mesh])
     assert obj.units_per_tile == TILE_SIZE
-
-
-# --- large scenery tile loading + centre mapping ----------------------------
 
 
 def _large_config(tiles, **overrides):
@@ -109,8 +102,6 @@ def test_tile_centers_map_index_to_obj_units(tri_mesh):
         _large_config([{"x": 0, "y": 0}, {"x": 1, "y": 2}]), [tri_mesh]
     )
     centers = _tile_centers_xz(obj)
-    # Tile (x,y) index -> OBJ (X, Z) at units_per_tile per tile. NOT negated
-    # (the sign flip lives only in the object.json tile coords).
     assert np.allclose(centers, [[0.0, 0.0], [TILE_SIZE, 2 * TILE_SIZE]])
 
 
@@ -122,23 +113,15 @@ def test_tile_centers_honour_render_scale(tri_mesh):
 
 
 def test_tile_centers_empty_when_no_tiles():
-    # _tile_centers_xz must tolerate an empty tile list (degenerate shape).
     from openrct2_scenery_generator.types import LargeScenery
 
     assert _tile_centers_xz(LargeScenery()).shape == (0, 2)
 
 
-# --- wall object.json flag emission -----------------------------------------
-
-
 def test_wall_json_omits_unset_flags(tri_mesh):
     props = build_wall_scenery_json(build_wall_scenery(_wall_config(), [tri_mesh]))["properties"]
-    # Only price/cursor/height are unconditional; the boolean capability flags
-    # are emitted only when true (absent => false in the engine).
     for key in ("hasGlass", "isDoubleSided", "isAllowedOnSlope", "isDoor", "isOpaque"):
         assert key not in props
-    # scrollingMode is omitted unless it's an actual scrolling sign (default 255
-    # means "none"; emitting 0 paints garbage text).
     assert "scrollingMode" not in props
 
 
@@ -169,23 +152,14 @@ def test_large_json_negates_and_scales_tile_coords(tri_mesh):
     tile = build_large_scenery_json(obj)["properties"]["tiles"][0]
     assert tile["x"] == -2 * COORDS_PER_TILE
     assert tile["y"] == -3 * COORDS_PER_TILE
-    # z/clearance are already coordinate units -> not negated.
     assert tile["z"] == 8
 
-
-# --------------------------------------------------------------------------
-# Additional coverage for missed branches
-# --------------------------------------------------------------------------
-
-# --- _load_header: version string set (line 57) ---
 
 def test_load_header_stores_version_when_set(tri_mesh):
     config = _wall_config(version="3.1")
     obj = build_wall_scenery(config, [tri_mesh])
     assert obj.version == "3.1"
 
-
-# --- _load_model error paths ---
 
 def test_load_model_raises_when_absent(tri_mesh):
     with pytest.raises(LoadError, match='"model" not found'):
@@ -209,8 +183,6 @@ def test_load_model_raises_for_out_of_bounds_mesh_index(tri_mesh):
     with pytest.raises(LoadError, match="out of bounds"):
         build_small_scenery(config, [tri_mesh])
 
-
-# --- _load_animated_model error paths ---
 
 def test_animation_frames_not_list_raises(tri_mesh):
     config = {
@@ -245,8 +217,6 @@ def test_animation_frames_mismatched_entry_count_raises(tri_mesh):
         build_small_scenery(config, [tri_mesh])
 
 
-# --- _load_animation error paths ---
-
 def test_animation_not_dict_raises(tri_mesh):
     config = {"id": "t", "name": "T", "animation": "not_a_dict"}
     with pytest.raises(LoadError, match='"animation" is not an object'):
@@ -271,14 +241,10 @@ def test_animation_frame_offsets_empty_raises(tri_mesh):
         build_small_scenery(config, [tri_mesh])
 
 
-# --- _load_tiles: non-dict element ---
-
 def test_tiles_element_not_dict_raises(tri_mesh):
     with pytest.raises(LoadError, match="must be an object"):
         build_large_scenery(_large_config(["not_a_dict"]), [tri_mesh])
 
-
-# --- load_*_scenery from file ---
 
 def _write_tri_obj(tmp_path):
     p = tmp_path / "m.obj"
@@ -327,11 +293,6 @@ def test_load_wall_scenery_from_file(tmp_path, monkeypatch):
     assert obj.id == "rct2.wl"
 
 
-# --------------------------------------------------------------------------
-# Banners
-# --------------------------------------------------------------------------
-
-
 def _banner_config(**overrides):
     base = {
         "id": "openrct2sg.footpath_banner.t",
@@ -368,11 +329,6 @@ def test_load_banner_from_file(tmp_path, monkeypatch):
     assert obj.id == "rct2.bn"
 
 
-# --------------------------------------------------------------------------
-# Path additions
-# --------------------------------------------------------------------------
-
-
 def _item_config(**overrides):
     base = {
         "id": "openrct2sg.footpath_item.t",
@@ -390,7 +346,6 @@ def test_path_addition_rejects_unknown_render_as(tri_mesh):
 
 def test_path_addition_defaults_allowed_flags(tri_mesh):
     obj = build_path_addition(_item_config(render_as="lamp"), [tri_mesh])
-    # Allowed-on-queue/slope default to True (positive sense).
     assert obj.is_allowed_on_queue is True
     assert obj.is_allowed_on_slope is True
 
@@ -429,11 +384,6 @@ def test_path_addition_loads_optional_broken_full_meshes(tmp_path, monkeypatch):
     obj = load_path_addition(tmp_path / "item.json")
     assert len(obj.broken_meshes) == 1
     assert len(obj.full_meshes) == 1
-
-
-# --------------------------------------------------------------------------
-# Scenery groups
-# --------------------------------------------------------------------------
 
 
 def test_scenery_group_loads_entries_without_meshes():

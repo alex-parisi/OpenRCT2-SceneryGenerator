@@ -1,33 +1,7 @@
 #!/usr/bin/env python3
-"""Bundle the Blender add-on's wheels and regenerate the manifest.
 
-Blender extensions run in an isolated Python env and install ONLY the wheels
-listed in ``blender_manifest.toml``; pip is never consulted at install time.
-So everything the add-on imports must be vendored as a wheel for each platform
-and Python version Blender ships, or it fails to import (e.g. "No module named
-'PIL'").
-
-The add-on bundles four kinds of wheel:
-
-  1. The renderer (``openrct2-x7-renderer``): the external PyPI package with
-     the Embree-vendored native extension. Platform- and Python-specific;
-     downloaded here straight from PyPI (no CI build needed).
-  2. The shared layer (``OpenRCT2-ObjectCommon``): the external PyPI package
-     both generators import. Pure-Python (``py3-none-any``, one wheel for every
-     target); downloaded from PyPI.
-  3. The dependency wheels (numpy, Pillow, PyYAML). Platform- and Python-
-     specific; downloaded from PyPI.
-  4. The front-end wheel (``openrct2_scenerygenerator``): this repo, now
-     pure-Python (``py3-none-any``, one wheel for every target). Built separately
-     with ``uv build --wheel`` and placed in ``<addon>/wheels/`` before this runs.
-
-This script downloads (1), (2), and (3) for all targets, then rewrites the manifest's
-``wheels = [...]`` to list every wheel present in ``<addon>/wheels/`` (including
-the pre-placed front-end wheel).
-
-Run from the repo root (pip must be importable):
-
-    uv run --with pip python scripts/collect_wheels.py --addon scenery
+"""
+Bundle the Blender add-on's wheels and regenerate the manifest.
 """
 
 from __future__ import annotations
@@ -56,12 +30,8 @@ ADDON = REPO / ADDONS["scenery"]
 WHEELS = ADDON / "wheels"
 MANIFEST = ADDON / "blender_manifest.toml"
 
-# (python version, abi tag) for each interpreter Blender ships: 3.11 (4.2/4.5
-# LTS), 3.13 (5.x).
 PYTHONS = (("3.11", "cp311"), ("3.13", "cp313"))
 
-# (label, --platform tags). Several dep tags per OS let pip pick each package's
-# compatible wheel (e.g. numpy publishes a higher macOS minimum than Pillow).
 TARGETS = (
     ("win_amd64", ["win_amd64"]),
     (
@@ -86,16 +56,12 @@ def ensure_pip() -> None:
 
 
 def download_specs() -> list[str]:
-    # Renderer + shared layer pinned to the bundled releases; deps pinned to the
-    # versions resolved in this env so they match what the renderer was built
-    # against.
     return [renderer_spec(), objectcommon_spec()] + [
         f"{name}=={md.version(name)}" for name in DEPS
     ]
 
 
 def is_managed_wheel(name: str) -> bool:
-    """True for wheels this script downloads (renderer + shared layer + deps), not the front-end."""
     low = name.lower()
     return (
         low.startswith(f"{RENDERER_PREFIX}-")
