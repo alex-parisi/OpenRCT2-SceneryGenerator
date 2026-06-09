@@ -18,7 +18,7 @@ RENDERER_VERSION = "0.3.1"
 
 OBJECTCOMMON_DIST = "OpenRCT2-ObjectCommon"
 OBJECTCOMMON_PREFIX = "openrct2_objectcommon"
-OBJECTCOMMON_VERSION = "0.1.2"
+OBJECTCOMMON_VERSION = "0.1.3"
 
 FRONTEND_PREFIX = "openrct2_scenerygenerator"
 
