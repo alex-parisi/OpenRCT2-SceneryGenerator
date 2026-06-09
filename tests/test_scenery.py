@@ -613,6 +613,7 @@ def test_large_render_order_and_count(tmp_path):
 from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
     _render_4_rotations,
     _render_wall_block,
+    _render_wall_pair,
 )
 from openrct2_scenery_generator.types import SmallScenery  # noqa: E402
 from openrct2_x7_renderer.mesh import Material, Mesh  # noqa: E402
@@ -640,6 +641,11 @@ def test_render_wall_block_empty_mesh_returns_blanks_flat():
 def test_render_wall_block_empty_mesh_returns_blanks_slope():
     blanks = _render_wall_block(None, _empty_mesh(), slope=True)
     assert len(blanks) == 6
+
+
+def test_render_wall_pair_uses_default_view_shift():
+    imgs = _render_wall_pair(_FakeContext(), _back_front_mesh())
+    assert len(imgs) == 2
 
 
 def test_render_4_rotations_empty_mesh_returns_blanks():

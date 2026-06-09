@@ -146,7 +146,7 @@ def _shear_wall(
 
 
 def _render_wall_pair(
-    context: Context, mesh: Mesh, view_shift=None
+    context: Context, mesh: Mesh, view_shift: dict[int, float] | None = None
 ) -> list[IndexedImage]:
     """Render a wall mesh under the two diagonal views, each end-anchored with its
     own per-view shift."""
@@ -224,7 +224,7 @@ def _render_wall_block(
     *,
     rise: float = _WALL_SLOPE_RISE,
     down_raise: float = _WALL_SLOPE_DOWN_RAISE,
-        view_shift=None,
+    view_shift: dict[int, float] | None = None,
 ) -> list[IndexedImage]:
     """One wall image block: 2 flat sprites, plus (if `slope`) 4 slope-sheared
     sprites: offsets 2,3 = slope-up, 4,5 = slope-down, each in the two diagonal
@@ -403,7 +403,7 @@ def _render_4_rotations(
     mesh: Mesh,
     cx: float,
     cz: float,
-        corners=None,
+    corners: list[tuple[float, float]] | None = None,
 ) -> list[IndexedImage]:
     """Render the 4 cardinal rotations of `mesh`, anchoring each direction's
     world origin at the tile's per-direction corner."""
