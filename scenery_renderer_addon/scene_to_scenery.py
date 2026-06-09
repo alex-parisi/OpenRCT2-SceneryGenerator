@@ -1,13 +1,5 @@
-"""Read the Blender scene into the scenery generator's config + meshes.
-
-The `bpy -> Mesh` adapter for scenery: instead of OBJ files, pull geometry
-straight from scene objects and hand the core `build_small_scenery` /
-`build_large_scenery` an in-memory config dict + `Mesh` list (same shape the
-YAML loader produces).
-
-Coordinate convention matches the renderer / vehicle add-on: OBJ space is
-+X forward, +Y up, +Z right; a Blender vertex (bx, by, bz) maps to OBJ
-(bx, bz, -by). 1 tile = TILE_SIZE OBJ units.
+"""
+Read the Blender scene into the scenery generator's config + meshes.
 """
 
 from __future__ import annotations
@@ -47,7 +39,7 @@ def _material_from_bpy(bmat) -> Material:
     if s is None:
         return m
 
-    # Visible mask overrides regular mask (mutually exclusive in the UI).
+    # Visible mask overrides regular mask
     if s.is_visible_mask:
         m.flags &= ~MaterialFlag.IS_MASK
         m.flags |= MaterialFlag.IS_VISIBLE_MASK
@@ -83,8 +75,7 @@ def _geometry_objects(scene) -> list:
 
 
 # Modifiers that animate an object's *vertices* (not just its transform) over
-# the timeline. An object carrying one of these (or animated shape keys)
-# must have its mesh re-extracted per pose to capture the deformation.
+# the timeline
 _DEFORM_MODIFIERS = {
     "ARMATURE",
     "MESH_DEFORM",
@@ -103,9 +94,7 @@ _DEFORM_MODIFIERS = {
 
 
 def _has_deforming_modifier(obj) -> bool:
-    """True if `obj`'s geometry (not merely its transform) changes across the
-    timeline: it has a deform modifier (armature being the common case) or
-    animated shape keys."""
+    """True if obj's geometry changes across the timeline."""
     if any(m.type in _DEFORM_MODIFIERS for m in obj.modifiers):
         return True
     sk = getattr(obj.data, "shape_keys", None)
@@ -113,9 +102,7 @@ def _has_deforming_modifier(obj) -> bool:
 
 
 def _make_deform_predicate(mode: str):
-    """Return `obj -> bool` selecting per-pose mesh re-extraction. `mode` is the
-    scene's `animation_deform`: ALWAYS bakes every object, NEVER bakes none, AUTO
-    bakes only objects with deforming modifiers / animated shape keys."""
+    """Return obj -> bool selecting per-pose mesh re-extraction."""
     if mode == "ALWAYS":
         return lambda obj: True
     if mode == "NEVER":
@@ -125,12 +112,7 @@ def _make_deform_predicate(mode: str):
 
 def _frame_offsets(cycle: int, loop: str) -> tuple[list[int], int]:
     """Build the engine's `frameOffsets` table and the number of distinct poses
-    to sample. The table length equals `cycle` (a power of two) so the engine's
-    `(tick >> delay) & (cycle - 1)` index stays contiguous.
-
-    LOOP: poses 0..cycle-1, table = identity.
-    PINGPONG: poses 0..P-1 then back down, with P = cycle/2 + 1 so the forward+
-    backward sweep is exactly `cycle` entries long."""
+    to sample."""
     if loop == "PINGPONG":
         p = cycle // 2 + 1
         offsets = list(range(p)) + list(range(p - 2, 0, -1))
@@ -141,23 +123,18 @@ def _frame_offsets(cycle: int, loop: str) -> tuple[list[int], int]:
 def _sample_animation_poses(
     geo_objs, scene, num_poses: int, f_start: int, f_end: int, deforms=None
 ):
-    """Sample every geometry object across `num_poses` evenly-spaced scene
-    frames. Returns ``(meshes, poses)`` where each pose is a list of model
-    entries (one per kept object, same order every pose) and `meshes` is the
-    shared pool the entries' `mesh_index` references.
+    """Sample every geometry object across num_poses evenly-spaced scene
+    frames.
 
     Two per-object sampling modes, chosen by `deforms(obj)` (default: none):
 
-    - **Rigid** (mirrors the vehicle add-on's restraint sampler): the mesh is
-      extracted once at the rest frame (baking the rest world rotation), so
-      pose 0 emits orientation ``[0, 0, 0]`` and later poses carry the rigid
-      delta mapped into the renderer's OBJ-space YZX convention. One pool mesh.
+    - **Rigid**: the mesh is extracted once at the rest frame, so pose 0 emits
+      orientation [0, 0, 0] and later poses carry the rigid delta mapped into
+      the renderer's OBJ-space YZX convention.
     - **Deforming**: the mesh is re-extracted at every pose (armature / shape
       keys / deform modifiers baked into the vertices by `_extract`, which
-      also bakes that frame's world rotation+scale). The entry therefore carries
-      identity orientation and only the translation. One pool mesh per pose.
-
-    `scene.frame_current` is restored on exit."""
+      also bakes that frame's world rotation+scale)
+    """
     if deforms is None:
         deforms = lambda obj: False  # noqa: E731
     if f_end <= f_start:
@@ -171,10 +148,7 @@ def _sample_animation_poses(
         ]
 
     # Each `frame_set` below forces a full-scene depsgraph re-evaluation on the
-    # main thread, so this loop blocks the UI (worse with dense / deforming
-    # meshes). Drive the cursor progress indicator so it reads as work, not a
-    # hang. `total` = rest pass + one step per pose. Guarded for background
-    # Blender, where there's no window / window manager.
+    # main thread, so this loop blocks the UI
     wm = getattr(bpy.context, "window_manager", None)
     win = getattr(bpy.context, "window", None)
     total = len(frames) + 1
@@ -187,13 +161,11 @@ def _sample_animation_poses(
     meshes: list[Mesh] = []
     poses: list[list[dict]] = [[] for _ in frames]
     try:
-        # Rest pass: classify each object and pre-extract its rest mesh. Rigid
-        # objects keep this mesh for every pose; deforming objects reuse it for
-        # pose 0 (same frame) and as the fallback if a later frame extracts empty.
+        # Rest pass: classify each object and pre-extract its rest mesh
         scene.frame_set(frames[0])
         dg = bpy.context.evaluated_depsgraph_get()
-        rigid: list = []  # (obj, mesh_index, R_rest_inv)
-        deforming: list = []  # (obj, rest_mesh_index)
+        rigid: list = []
+        deforming: list = []
         for obj in geo_objs:
             mesh = _extract(obj, dg)
             if mesh is None:
@@ -233,17 +205,15 @@ def _sample_animation_poses(
                 })
             for obj, rest_idx in deforming:
                 if fi == 0:
-                    slot = rest_idx  # rest mesh already in the pool
+                    slot = rest_idx
                 else:
                     mesh = _extract(obj, dg)
                     if mesh is None:
-                        slot = last_slot[obj]  # hold the last good geometry
+                        slot = last_slot[obj]
                     else:
                         meshes.append(mesh)
                         slot = len(meshes) - 1
                         last_slot[obj] = slot
-                # _extract baked this frame's world rotation+scale (and the
-                # deformation) into the vertices; only the translation remains.
                 entries.append({
                     "mesh_index": slot,
                     "position": object_position(obj),
@@ -264,18 +234,13 @@ def _sample_animation_poses(
 
 
 def build_config_and_meshes(context):
-    """Return (config_dict, meshes) read from the active scene.
-
-    Raises SceneError with a user-facing message on invalid scenes.
-    """
+    """Return (config_dict, meshes) read from the active scene."""
     scene = context.scene
     ss = scene.vgs_scenery
     depsgraph = context.evaluated_depsgraph_get()
 
     geo_objs = _geometry_objects(scene)
-    # A wall is a door OR animated, never both: the engine paints doors from their
-    # own image table and ignores the isAnimated frames. Both sample keyframed
-    # poses (a door keyframes its leaf opening; a plain animated wall, its cycle).
+    # A wall is a door OR animated, never both
     small_animated = ss.object_type == "scenery_small" and ss.is_animated
     wall_door = ss.object_type == "scenery_wall" and ss.is_door
     wall_animated = (
@@ -304,8 +269,7 @@ def build_config_and_meshes(context):
             "frames": poses,
         }
     elif wall_door:
-        # A door keyframes its leaf swinging open; we sample DOOR_SAMPLE_FRAMES
-        # poses (closed -> open) and the core mirrors them for the backward swing.
+        # A door keyframes its leaf swinging open
         meshes, poses = _sample_animation_poses(
             geo_objs,
             scene,
@@ -317,8 +281,7 @@ def build_config_and_meshes(context):
         animation = {"frames": poses}
     elif wall_animated:
         # Animated walls cycle a fixed WALL_ANIMATION_FRAMES frames with no
-        # delay/offset table (the engine advances one frame per tick), so we only
-        # sample the poses; the core fills in the rest from the frame count.
+        # delay/offset table
         meshes, poses = _sample_animation_poses(
             geo_objs,
             scene,
@@ -380,8 +343,7 @@ def build_config_and_meshes(context):
         })
     elif ss.object_type == "scenery_wall":
         # A door takes the door paint path; otherwise isAnimated drives the
-        # flat-only frame cycle. Animated walls can't carry the slope/glass/
-        # double-sided blocks (they'd alias the frames), so force those off.
+        # flat-only frame cycle
         wall_animation = ss.is_animated and not ss.is_door
         wall_cfg: dict = {
             "height": int(ss.wall_height),
@@ -392,15 +354,12 @@ def build_config_and_meshes(context):
             "is_opaque": ss.is_opaque,
             "is_animated": wall_animation,
             "is_door": ss.is_door,
-            # The long-animation / sound options only mean anything for a door.
             "is_long_door_animation": ss.is_door and ss.is_long_door_animation,
         }
         if ss.is_door and ss.use_door_sound:
             wall_cfg["door_sound"] = int(ss.door_sound)
         config.update(wall_cfg)
     elif ss.object_type == "footpath_banner":
-        # Banner reads price / scenery_group / has_primary_colour / scrolling_mode;
-        # the back/front split is per-material (Front/Back classification).
         config.update({"scrolling_mode": int(ss.scrolling_mode)})
     elif ss.object_type == "footpath_item":
         config.update({
@@ -412,7 +371,7 @@ def build_config_and_meshes(context):
             "is_allowed_on_queue": ss.is_allowed_on_queue,
             "is_allowed_on_slope": ss.is_allowed_on_slope,
         })
-    else:  # scenery_large
+    else:
         if not ss.tiles:
             raise SceneError(
                 "Large scenery needs at least one tile. Add one in the Tiles list."
@@ -447,17 +406,13 @@ def _tile_config(t) -> dict:
     }
 
 
-# Tab-icon edge size, in pixels. The engine's group DrawPreview offsets the
-# sprite from its origin (SceneryGroupObject.cpp), so a small, centred icon reads
-# correctly as a tab button.
+# Tab-icon edge size, in pixels
 _GROUP_ICON_SIZE = 32
 
 
 def _group_preview(ss):
-    """Quantise the group's tab-icon image to the RCT2 palette, centred on its
-    draw origin, or None when no icon is set. The bpy image is saved to a PNG
-    (RGBA) and run through `quantize_to_indexed` (Floyd-Steinberg onto the
-    non-remap palette region; source alpha -> transparent)."""
+    """Quantise the group's tab-icon image to the RCT2 palette, centered on its
+    draw origin, or None when no icon is set."""
     if ss.icon is None:
         return None
     tmpdir = tempfile.mkdtemp(prefix="vgs_icon_")
@@ -480,8 +435,7 @@ def _group_preview(ss):
 
 
 def build_group(context):
-    """Build a SceneryGroup (tab) from the scene settings -- no geometry, just the
-    name, priority, member entries, and an optional icon image."""
+    """Build a SceneryGroup (tab) from the scene settings."""
     ss = context.scene.vgs_scenery
     authors = [a.strip() for a in ss.authors.split(",") if a.strip()]
     entries = [e.object_id.strip() for e in ss.entries if e.object_id.strip()]

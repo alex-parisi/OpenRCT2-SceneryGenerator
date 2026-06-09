@@ -1,12 +1,5 @@
-"""Blender PropertyGroups for the scenery add-on.
-
-Mirrors the config the core `build_small_scenery` / `build_large_scenery`
-consume (see scene_to_scenery.py), expressed as native Blender properties so a
-scenery object is authored entirely in the UI. Uses a `vgs_` prefix so this
-add-on can coexist with the vehicle add-on (`vg_`).
-
-NOTE: no ``from __future__ import annotations``; PEP 563 would stringify the
-``prop: SomeProperty(...)`` definitions and break Blender registration.
+"""
+Blender PropertyGroups for the scenery add-on.
 """
 
 import bpy
@@ -50,9 +43,6 @@ OBJECT_TYPE_ITEMS = [
     ("scenery_group", "Scenery Group", "A scenery tab (name + icon + member ids); no geometry"),
 ]
 
-# How a path addition is drawn & indexed (PathAddition.render_as). Mirrors
-# PATH_ADDITION_RENDER_TYPES; the bin/bench/lamp choice also drives the engine's
-# draw-type flag (set in build_path_addition_json).
 PATH_ADDITION_RENDER_AS_ITEMS = [
     ("lamp", "Lamp", "Lamp post / queue TV (one upright per edge)"),
     ("bin", "Bin", "Litter bin (gains broken + full sprite blocks)"),
@@ -63,11 +53,7 @@ PATH_ADDITION_RENDER_AS_ITEMS = [
 def _scale_preset_update(self, _context):
     scale_preset_update(self, _context)
 
-# Per-material front/back role. Mirrors the MTL name classification
-# (*Front* / *Back*) the CLI path uses, exposed as an explicit picker. Used by
-# double-sided walls (front/back blocks) and by banners (front pole+sign vs the
-# rear pole). Untagged ("BOTH") faces are shared: on a wall they appear on both
-# sides, on a banner they fall into the front layer.
+# Per-material front/back role
 WALL_SIDE_ITEMS = [
     ("BOTH", "Both / Front", "Shared: both wall sides, or a banner's front layer"),
     ("FRONT", "Front Only", "Front block of a double-sided wall, or a banner's front pole/sign"),
@@ -81,9 +67,6 @@ OBJECT_ROLE_ITEMS = [
 
 SHAPE_ITEMS = [(s, s, "") for s in SMALL_SCENERY_SHAPES]
 
-# The cursor identifiers OpenRCT2 accepts in an object.json `cursor` field
-# (ObjectJsonHelpers cursor lookup table / CursorID enum). Anything outside this
-# set is rejected by the engine, so a closed dropdown is safer than free text.
 _CURSOR_NAMES = [
     "CURSOR_ARROW",
     "CURSOR_BLANK",
@@ -115,8 +98,6 @@ _CURSOR_NAMES = [
 ]
 CURSOR_ITEMS = [(n, _title(n.removeprefix("CURSOR_")), "") for n in _CURSOR_NAMES]
 
-# Same material-region scheme as the vehicle add-on; "NONE" is a plain colour,
-# the REMAP* regions are recoloured by the placement colours.
 MATERIAL_REGION_ITEMS = [
     ("NONE", "None", "Plain shaded colour"),
     ("REMAP1", "Remap 1 (primary colour)", "Recoloured by the object's primary colour"),
@@ -128,9 +109,6 @@ MATERIAL_REGION_ITEMS = [
 ]
 
 
-# Animation cycle length = number of ticks the engine steps through before
-# looping. The engine masks the tick counter with `mask = cycle - 1`, so the
-# cycle MUST be a power of two for even playback (Paint.SmallScenery.cpp).
 ANIMATION_CYCLE_ITEMS = [
     ("4", "4 frames", "Short loop"),
     ("8", "8 frames", "Medium loop"),
@@ -146,10 +124,6 @@ ANIMATION_LOOP_ITEMS = [
     ("PINGPONG", "Ping-Pong", "Play poses forward then back (smooth for swings)"),
 ]
 
-# How each animated object's geometry is sampled. The cheap default treats an
-# object as a rigid body (one mesh + a per-pose transform), which can't capture
-# armature/shape-key deformation. "Bake" re-extracts the deformed mesh at every
-# pose, needed for skinned/deforming objects, at the cost of one mesh per pose.
 ANIMATION_DEFORM_ITEMS = [
     ("AUTO", "Auto", "Bake objects with an armature/deform modifier or animated "
      "shape keys; keep others rigid"),
@@ -179,9 +153,7 @@ class VGSMaterialSettings(PropertyGroup):
         description="Optional image; must be saved to disk (its file is read at export)",
         type=bpy.types.Image,
     )
-    # Phong shading controls, mirroring the vehicle add-on's VGMaterialSettings.
-    # Specular is always taken from here; diffuse colour falls back to the
-    # shader's Base Color unless overridden below (see scene_to_scenery).
+    # Phong shading controls
     use_color_override: BoolProperty(
         name="Override Color",
         description="Use the color below instead of the shader's Base Color",
@@ -227,9 +199,7 @@ class VGSMaterialSettings(PropertyGroup):
         max=1.0,
         default=(1.0, 1.0, 1.0),
     )
-    # Wall-only classification. These replace the MTL *Glass* / *Front* / *Back*
-    # name rules for the add-on path; they only matter when the object type is a
-    # wall (see scene_to_scenery._material_from_bpy).
+    # Wall-only classification
     is_glass: BoolProperty(
         name="Glass",
         description="Translucent glass pane; split into the wall's glass overlay block",
@@ -263,8 +233,7 @@ class VGSGroupEntry(PropertyGroup):
 
 
 class VGSTile(PropertyGroup):
-    """One large-scenery tile. x/y are tile indices (the exporter converts to
-    OpenRCT2 coordinate units); z/clearance are in coordinate units."""
+    """One large-scenery tile."""
 
     x: IntProperty(name="X", description="Tile index along OBJ +X", default=0)
     y: IntProperty(name="Y", description="Tile index along OBJ +Z", default=0)
@@ -282,9 +251,7 @@ class VGSTile(PropertyGroup):
         description="Allow another object's supports to rest on top of this tile",
         default=False,
     )
-    # `corners`/`walls` are 4-bit masks in object.json; exposed here as four
-    # toggles (bit i = quadrant/edge i) and packed by the exporter. Corners
-    # defaults to all set (0xF, the whole tile); walls to none.
+    # `corners`/`walls` are 4-bit masks in object.json
     corners: BoolVectorProperty(
         name="Quadrants",
         description="Which of the tile's 4 quadrants this piece occupies "
@@ -304,7 +271,7 @@ VGSLight = SharedLight
 
 
 class VGSScenerySettings(PropertyGroup):
-    # --- Type & identity ---------------------------------------------------
+    # Type & identity
     object_type: EnumProperty(name="Type", items=OBJECT_TYPE_ITEMS, default="scenery_small")
     scale_preset: EnumProperty(
         name="Scale",
@@ -332,7 +299,7 @@ class VGSScenerySettings(PropertyGroup):
     authors: StringProperty(name="Authors", description="Comma-separated", default="")
     version: StringProperty(name="Version", default="1.0")
 
-    # --- Common placement --------------------------------------------------
+    # Common placement
     price: FloatProperty(name="Price", default=2.0)
     removal_price: FloatProperty(name="Removal Price", default=1.0)
     cursor: EnumProperty(
@@ -351,7 +318,7 @@ class VGSScenerySettings(PropertyGroup):
     )
     has_secondary_colour: BoolProperty(name="Secondary Colour", default=False)
 
-    # --- Small scenery -----------------------------------------------------
+    # Small scenery
     height: IntProperty(
         name="Height", description="Clearance in Z coordinate units (8 per step)", default=64, min=0
     )
@@ -362,7 +329,7 @@ class VGSScenerySettings(PropertyGroup):
     prohibit_walls: BoolProperty(name="Prohibit Walls", default=False)
     is_tree: BoolProperty(name="Tree", default=False)
 
-    # --- Small-scenery animation (samples Blender keyframes into poses) -----
+    # Small-scenery animation
     is_animated: BoolProperty(
         name="Animated",
         description="Sample the scene's keyframes into animation poses",
@@ -398,7 +365,7 @@ class VGSScenerySettings(PropertyGroup):
         default="AUTO",
     )
 
-    # --- Large scenery -----------------------------------------------------
+    # Large scenery
     has_tertiary_colour: BoolProperty(name="Tertiary Colour", default=False)
     is_photogenic: BoolProperty(name="Photogenic", default=False)
     scrolling_mode: IntProperty(
@@ -411,9 +378,7 @@ class VGSScenerySettings(PropertyGroup):
     tiles: CollectionProperty(type=VGSTile)
     tile_index: IntProperty(default=0)
 
-    # --- Wall --------------------------------------------------------------
-    # `wall_height` is in wall height units; the engine renders it `* 8`
-    # coordinate units tall (separate from small scenery's `height` clearance).
+    # Wall
     wall_height: IntProperty(
         name="Height",
         description="Wall height in wall units (rendered height * 8 coordinate units)",
@@ -440,12 +405,7 @@ class VGSScenerySettings(PropertyGroup):
         description="Wall fully occludes the tile behind it (no see-through gaps)",
         default=False,
     )
-    # Walls reuse `is_animated` (declared in the small-scenery section) as the
-    # plain isAnimated flag; only one object type is active at a time. Doors are
-    # their own animated sub-mode with an optional sound and a long-animation
-    # variant. NOTE: the core renderer emits only the static wall sprite block --
-    # it does not yet generate door-swing / animation frames -- so these set the
-    # object.json flags but the panel won't visually animate (same as YAML).
+    # Walls reuse is_animated as the plain isAnimated flag
     is_door: BoolProperty(
         name="Door",
         description="Wall is a door peeps and guests pass through",
@@ -468,12 +428,7 @@ class VGSScenerySettings(PropertyGroup):
         min=0,
     )
 
-    # --- Banner ------------------------------------------------------------
-    # Banners reuse `scrolling_mode` (the sign's scrolling text) and
-    # `has_primary_colour` (recolours the Remap1 sign); the back pole / front
-    # layer split is per-material via the Front/Back picker (VGSMaterialSettings).
-
-    # --- Path addition (footpath_item) -------------------------------------
+    # Path addition
     render_as: EnumProperty(
         name="Render As",
         description="How the engine draws & indexes the path addition's sprites",
@@ -498,7 +453,7 @@ class VGSScenerySettings(PropertyGroup):
         default=True,
     )
 
-    # --- Scenery group (tab) -----------------------------------------------
+    # Scenery group
     priority: IntProperty(
         name="Priority",
         description="Sort order of the tab in the scenery window (lower = earlier)",
@@ -514,7 +469,7 @@ class VGSScenerySettings(PropertyGroup):
         type=bpy.types.Image,
     )
 
-    # --- Custom lighting ---------------------------------------------------
+    # Custom lighting
     lights: CollectionProperty(type=VGSLight)
     light_index: IntProperty(default=0)
     show_lights: BoolProperty(

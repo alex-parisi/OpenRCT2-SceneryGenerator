@@ -1,8 +1,6 @@
-"""Blender operators for the scenery add-on: test render, threaded export,
+"""
+Blender operators for the scenery add-on: test render, threaded export,
 and tile/light list management.
-
-NOTE: no ``from __future__ import annotations``; operators declare bpy
-properties as annotations and PEP 563 would break registration.
 """
 
 import os
@@ -39,8 +37,6 @@ from openrct2_scenery_generator.loader import (
 
 from . import scene_to_scenery
 
-# kind -> (export_to, export_test). The render operators dispatch on the kind
-# returned by _build_scenery_from_scene so they stay agnostic of the object type.
 _EXPORTERS = {
     "small": (export_small_scenery_to, export_small_scenery_test),
     "large": (export_large_scenery_to, export_large_scenery_test),
@@ -54,7 +50,6 @@ _EXPORTERS = {
 def _build_scenery_from_scene(context):
     """Main-thread step: read bpy data into a scenery object + its kind."""
     if context.scene.vgs_scenery.object_type == "scenery_group":
-        # Groups have no geometry; build straight from the entries + icon.
         return "group", scene_to_scenery.build_group(context)
     config, meshes = scene_to_scenery.build_config_and_meshes(context)
     obj_type = config["object_type"]
@@ -70,14 +65,7 @@ def _build_scenery_from_scene(context):
 
 
 class _SceneryModalBase(RenderModalBase):
-    """Shared base for the scenery render operators.
-
-    Builds the scenery object on the main thread (it carries its own progress
-    bar from ``scene_to_scenery``), then renders it off-thread via the shared
-    ``RenderModalBase``. Subclasses add their per-run paths and the render call;
-    the payload passed to ``_prepare``/``_render`` is the ``(kind, obj)`` tuple
-    from ``_build``.
-    """
+    """Shared base for the scenery render operators."""
 
     _clean_error_types = (scene_to_scenery.SceneError,)
     _invalid_prefix = "Invalid scenery"
@@ -103,16 +91,10 @@ class VGS_OT_test_render(_SceneryModalBase):
 
     def _render(self, payload) -> None:
         kind, obj = payload
-        # Render at the real in-game scale (test=False), not the 8x TEST_ZOOM
-        # preview scale: the Image Editor sprite should be pixel-for-pixel what
-        # OpenRCT2 paints. (No remap overrides are lost here - make_context only
-        # applies those in test mode when a config `root` is passed, which the
-        # add-on never does.)
+        # Render at the real in-game scale
         ctx = make_context(self._lights, obj.units_per_tile, False)
         _EXPORTERS[kind][1](obj, ctx, self._tmp)
-        # Every kind writes a combined contact sheet (a 2x2 preview grid for
-        # small / large, every wall sprite for walls, the tab icon for groups);
-        # preview whichever it made.
+        # Every kind writes a combined contact sheet
         self._png = os.path.join(self._tmp, "preview_combined.png")
 
     def _on_success(self, context):

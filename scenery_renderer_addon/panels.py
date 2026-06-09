@@ -1,4 +1,5 @@
-"""UI panels for the scenery add-on: scene settings (3D View N-panel) +
+"""
+UI panels for the scenery add-on: scene settings (3D View N-panel) +
 per-object role + per-material region."""
 
 import bpy
@@ -54,9 +55,6 @@ class VGS_PT_scenery(Panel):
         box.prop(ss, "authors")
         box.prop(ss, "version")
 
-        # Scenery groups carry no geometry, pricing, or lighting -- just a tab
-        # icon and a member list -- so they take a dedicated branch and skip the
-        # placement / type / lighting sections entirely.
         if is_group:
             _draw_group(layout, ss)
             _draw_actions(layout)
@@ -97,8 +95,6 @@ class VGS_PT_scenery(Panel):
             box.label(text="Wall", icon="MOD_BUILD")
             box.prop(ss, "wall_height")
 
-            # An animated wall is flat-only (the slope/glass/double-sided blocks
-            # would alias the animation frames), so grey those out while animating.
             wall_animated = ss.is_animated and not ss.is_door
             col = box.column(align=True)
             sub = col.column(align=True)
@@ -114,8 +110,6 @@ class VGS_PT_scenery(Panel):
                     icon="ERROR",
                 )
 
-            # Door and plain animation are mutually exclusive paint paths, so only
-            # offer each when the other is off.
             if not ss.is_animated:
                 dbox = box.box()
                 dbox.prop(ss, "is_door", icon="MOD_BEVEL")
@@ -210,8 +204,7 @@ class VGS_PT_scenery(Panel):
 
 
 def _draw_placement(layout, ss):
-    """Pricing / cursor / colours, tailored per type. Banners and path additions
-    only consume a subset (no removal price; banners have no cursor)."""
+    """Pricing / cursor / colours, tailored per type."""
     box = layout.box()
     box.label(text="Placement", icon="TOOL_SETTINGS")
     ot = ss.object_type
@@ -235,7 +228,7 @@ def _draw_placement(layout, ss):
 
 
 def _draw_group(layout, ss):
-    """The scenery-group tab: priority, member entries, and the tab icon."""
+    """The scenery-group tab"""
     box = layout.box()
     box.label(text="Scenery Group", icon="GROUP")
     box.prop(ss, "priority")
@@ -283,19 +276,12 @@ def _draw_actions(layout):
 
 
 def _draw_material_settings(layout, ms, object_type):
-    """Draw a material's OpenRCT2 region/flags/shading settings.
-
-    Mirrors the vehicle add-on's per-material controls so the settings can live
-    inline in the "Selected Object" panel instead of the Material Properties tab.
-    The wall-only glass/side classification shows only for wall objects.
-    """
+    """Draw a material's OpenRCT2 region/flags/shading settings."""
     if object_type == "scenery_wall":
         col = layout.column(align=True)
         col.prop(ms, "is_glass")
         col.prop(ms, "wall_side")
     elif object_type == "footpath_banner":
-        # Banners reuse the front/back split (front pole+sign vs rear pole) but
-        # have no glass block.
         layout.prop(ms, "wall_side", text="Banner Layer")
     layout.prop(ms, "region")
     col = layout.column(align=True)
@@ -348,12 +334,7 @@ def _draw_object_settings(layout, obj, object_type):
         _draw_material_settings(box, mat.vgs_material, object_type)
 
 
-# --- Shared "Selected Object" container -------------------------------------
-# The vehicle and scenery add-ons each ship an identical copy of this trivial
-# parent panel and register it cooperatively (guarded by idname) so a single
-# "Selected Object" panel hosts whichever add-ons are installed. Each add-on
-# contributes a child sub-panel via ``bl_parent_id``; this parent owns only the
-# header. The two copies MUST keep the same ``bl_idname``.
+# Shared "Selected Object" container
 _SHARED_PARENT_IDNAME = "OPENRCT2_PT_selected_object"
 
 
@@ -381,11 +362,7 @@ def _register_shared_parent():
 
 
 def _unregister_shared_parent():
-    """Drop the shared parent only once no add-on's child still nests under it.
-
-    Call this *after* unregistering this add-on's own child panels, so the
-    scan below sees only the other add-on's remaining children.
-    """
+    """Drop the shared parent only once no add-on's child still nests under it."""
     cls = getattr(bpy.types, _SHARED_PARENT_IDNAME, None)
     if cls is None:
         return
