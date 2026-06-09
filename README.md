@@ -51,10 +51,10 @@ The config format is JSON or YAML (chosen by file extension). The top-level
 uv sync
 
 # Quick single-viewpoint render of an example, written to test/. Fast iteration.
-uv run openrct2-scenery-generator --test examples/scenery_small/obelisk.yaml
+uv run openrct2-scenery-generator --test examples/cli/scenery_small/obelisk.yaml
 
 # Full render: writes object/ and <id>.parkobj in the output directory.
-uv run openrct2-scenery-generator examples/scenery_large/gate.yaml
+uv run openrct2-scenery-generator examples/cli/scenery_large/gate.yaml
 ```
 
 Install the resulting `.parkobj` into OpenRCT2's `object/` directory and

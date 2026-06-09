@@ -6,7 +6,7 @@ version: "1.0"
 output_directory: .
 
 meshes:
-  - examples/scenery_small/obelisk.obj
+  - examples/cli/scenery_small/obelisk.obj
 
 # Animated small scenery (generic frameOffsets path). Each entry in
 # `animation.frames` is one pose: a full `model` placement list. `frame_offsets`
