@@ -26,6 +26,7 @@ from openrct2_x7_renderer.types import IndexedImage, MeshFrame, Model
 from .constants import (
     DEFAULT_CURSOR,
     DEFAULT_HEIGHT,
+    DOOR_SAMPLE_FRAMES,
     PATH_ADDITION_DEFAULT_CURSOR,
     PATH_ADDITION_RENDER_TYPES,
     SCENERY_GROUP_DEFAULT_PRIORITY,
@@ -274,28 +275,42 @@ def build_wall_scenery(
 
     obj.meshes = list(meshes)
 
-    # An animated wall carries one geometry pose per frame in an `animation`
-    # block (the same per-pose Model shape as small scenery), not a single
-    # `model`. The engine cycles a fixed WALL_ANIMATION_FRAMES frames, so reject
-    # any other count up front rather than emit an image table the paint code
-    # would index past.
+    # Door and animated walls both carry keyframed geometry poses in an
+    # `animation` block (the same per-pose Model shape as small scenery), not a
+    # single static `model`; each has a fixed pose count the engine's image table
+    # demands, so reject any other count up front. A door takes its own paint path
+    # (is_animated stays off) and provides DOOR_SAMPLE_FRAMES poses (closed + 4
+    # open); a plain animated wall cycles WALL_ANIMATION_FRAMES flat frames.
     anim = root.get("animation")
-    obj.is_animated = optional_bool(root, "is_animated", False) or anim is not None
-    if obj.is_animated:
-        if anim is None:
-            raise LoadError('Animated wall requires an "animation" block with frames')
-        if not isinstance(anim, dict):
-            raise LoadError('Property "animation" is not an object')
-        obj.model = _load_animated_model(anim.get("frames"), len(obj.meshes))
-        num_poses = len(obj.model.meshes[0]) if obj.model.meshes else 0
-        if num_poses != WALL_ANIMATION_FRAMES:
-            raise LoadError(
-                f"Animated walls need exactly {WALL_ANIMATION_FRAMES} animation "
-                f"frames, got {num_poses}"
-            )
+    if obj.is_door:
+        obj.is_animated = False
+        obj.model = _load_wall_pose_model(anim, len(obj.meshes), DOOR_SAMPLE_FRAMES, "Door")
     else:
-        obj.model = _load_model(root.get("model"), len(obj.meshes))
+        obj.is_animated = optional_bool(root, "is_animated", False) or anim is not None
+        if obj.is_animated:
+            obj.model = _load_wall_pose_model(
+                anim, len(obj.meshes), WALL_ANIMATION_FRAMES, "Animated"
+            )
+        else:
+            obj.model = _load_model(root.get("model"), len(obj.meshes))
     return obj
+
+
+def _load_wall_pose_model(anim: Any, num_meshes: int, want_poses: int, kind: str) -> Model:
+    """Parse a wall `animation` block into a per-pose Model, requiring exactly
+    `want_poses` frames (the engine's image table is fixed-length, so a mismatch
+    would be indexed past in-game). `kind` names the wall sort in error text."""
+    if anim is None:
+        raise LoadError(f'{kind} wall requires an "animation" block with frames')
+    if not isinstance(anim, dict):
+        raise LoadError('Property "animation" is not an object')
+    model = _load_animated_model(anim.get("frames"), num_meshes)
+    num_poses = len(model.meshes[0]) if model.meshes else 0
+    if num_poses != want_poses:
+        raise LoadError(
+            f"{kind} walls need exactly {want_poses} animation frames, got {num_poses}"
+        )
+    return model
 
 
 def load_wall_scenery(json_path: Path | str) -> WallScenery:

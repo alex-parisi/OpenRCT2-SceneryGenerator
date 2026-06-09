@@ -24,7 +24,7 @@ from openrct2_object_common.blender.mesh_extract import (
     material_base,
     object_position,
 )
-from openrct2_scenery_generator.constants import WALL_ANIMATION_FRAMES
+from openrct2_scenery_generator.constants import DOOR_SAMPLE_FRAMES, WALL_ANIMATION_FRAMES
 from openrct2_scenery_generator.loader import build_scenery_group
 from openrct2_x7_renderer.constants import MaterialFlag
 from openrct2_x7_renderer.image import quantize_to_indexed
@@ -274,9 +274,13 @@ def build_config_and_meshes(context):
 
     geo_objs = _geometry_objects(scene)
     # A wall is a door OR animated, never both: the engine paints doors from their
-    # own image table and ignores the isAnimated frames, so doors don't sample.
+    # own image table and ignores the isAnimated frames. Both sample keyframed
+    # poses (a door keyframes its leaf opening; a plain animated wall, its cycle).
     small_animated = ss.object_type == "scenery_small" and ss.is_animated
-    wall_animated = ss.object_type == "scenery_wall" and ss.is_animated and not ss.is_door
+    wall_door = ss.object_type == "scenery_wall" and ss.is_door
+    wall_animated = (
+        ss.object_type == "scenery_wall" and ss.is_animated and not ss.is_door
+    )
 
     meshes: list[Mesh] = []
     model: list[dict] = []
@@ -299,6 +303,18 @@ def build_config_and_meshes(context):
             "frame_offsets": offsets,
             "frames": poses,
         }
+    elif wall_door:
+        # A door keyframes its leaf swinging open; we sample DOOR_SAMPLE_FRAMES
+        # poses (closed -> open) and the core mirrors them for the backward swing.
+        meshes, poses = _sample_animation_poses(
+            geo_objs,
+            scene,
+            DOOR_SAMPLE_FRAMES,
+            int(ss.anim_start_frame),
+            int(ss.anim_end_frame),
+            _make_deform_predicate(ss.animation_deform),
+        )
+        animation = {"frames": poses}
     elif wall_animated:
         # Animated walls cycle a fixed WALL_ANIMATION_FRAMES frames with no
         # delay/offset table (the engine advances one frame per tick), so we only
@@ -405,13 +421,30 @@ def build_config_and_meshes(context):
             "has_tertiary_colour": ss.has_tertiary_colour,
             "is_photogenic": ss.is_photogenic,
             "scrolling_mode": int(ss.scrolling_mode),
-            "tiles": [
-                {"x": int(t.x), "y": int(t.y), "z": int(t.z), "clearance": int(t.clearance)}
-                for t in ss.tiles
-            ],
+            "tiles": [_tile_config(t) for t in ss.tiles],
         })
 
     return config, meshes
+
+
+def _bitmask(flags) -> int:
+    """Pack a BoolVectorProperty of toggles into a bitmask (bit i = flags[i])."""
+    return sum(1 << i for i, on in enumerate(flags) if on)
+
+
+def _tile_config(t) -> dict:
+    """One large-scenery tile config, including the per-tile supports flags and
+    the packed corners/walls quadrant masks."""
+    return {
+        "x": int(t.x),
+        "y": int(t.y),
+        "z": int(t.z),
+        "clearance": int(t.clearance),
+        "has_supports": bool(t.has_supports),
+        "allow_supports_above": bool(t.allow_supports_above),
+        "corners": _bitmask(t.corners),
+        "walls": _bitmask(t.walls),
+    }
 
 
 # Tab-icon edge size, in pixels. The engine's group DrawPreview offsets the

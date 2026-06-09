@@ -70,6 +70,11 @@ def _wall_config(**overrides):
     return base
 
 
+def _door_frames(n=5):
+    """A door `animation` block: n keyframed poses (closed + opening)."""
+    return {"frames": [[{"mesh_index": 0, "position": [0, 0, 0]}] for _ in range(n)]}
+
+
 @pytest.mark.parametrize("bad", [0, -4.0])
 def test_units_per_tile_must_be_positive(tri_mesh, bad):
     with pytest.raises(LoadError, match="units_per_tile"):
@@ -127,18 +132,28 @@ def test_wall_json_omits_unset_flags(tri_mesh):
 
 def test_wall_json_emits_set_flags(tri_mesh):
     obj = build_wall_scenery(
-        _wall_config(is_allowed_on_slope=True, has_glass=True, is_door=True),
+        _wall_config(is_allowed_on_slope=True, has_glass=True),
         [tri_mesh],
     )
     props = build_wall_scenery_json(obj)["properties"]
     assert props["isAllowedOnSlope"] is True
     assert props["hasGlass"] is True
+
+
+def test_door_json_emits_isdoor_and_drops_glass(tri_mesh):
+    obj = build_wall_scenery(
+        _wall_config(is_door=True, has_glass=True, animation=_door_frames()),
+        [tri_mesh],
+    )
+    props = build_wall_scenery_json(obj)["properties"]
     assert props["isDoor"] is True
+    assert "hasGlass" not in props  # a door takes its own paint path, no glass block
 
 
 def test_wall_json_emits_door_sound_and_scrolling(tri_mesh):
     obj = build_wall_scenery(
-        _wall_config(door_sound=3, scrolling_mode=2, is_door=True), [tri_mesh]
+        _wall_config(door_sound=3, scrolling_mode=2, is_door=True, animation=_door_frames()),
+        [tri_mesh],
     )
     props = build_wall_scenery_json(obj)["properties"]
     assert props["doorSound"] == 3

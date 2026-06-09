@@ -12,6 +12,7 @@ NOTE: no ``from __future__ import annotations``; PEP 563 would stringify the
 import bpy
 from bpy.props import (
     BoolProperty,
+    BoolVectorProperty,
     CollectionProperty,
     EnumProperty,
     FloatProperty,
@@ -270,6 +271,32 @@ class VGSTile(PropertyGroup):
     z: IntProperty(name="Z", description="Height offset (coordinate units)", default=0)
     clearance: IntProperty(
         name="Clearance", description="Vertical clearance (coordinate units)", default=40, min=0
+    )
+    has_supports: BoolProperty(
+        name="Supports",
+        description="This tile draws vertical supports down to the ground",
+        default=False,
+    )
+    allow_supports_above: BoolProperty(
+        name="Supports Above",
+        description="Allow another object's supports to rest on top of this tile",
+        default=False,
+    )
+    # `corners`/`walls` are 4-bit masks in object.json; exposed here as four
+    # toggles (bit i = quadrant/edge i) and packed by the exporter. Corners
+    # defaults to all set (0xF, the whole tile); walls to none.
+    corners: BoolVectorProperty(
+        name="Quadrants",
+        description="Which of the tile's 4 quadrants this piece occupies "
+        "(drives selection / terrain clipping)",
+        size=4,
+        default=(True, True, True, True),
+    )
+    walls: BoolVectorProperty(
+        name="Wall Edges",
+        description="Which of the tile's 4 edges allow a wall against this piece",
+        size=4,
+        default=(False, False, False, False),
     )
 
 

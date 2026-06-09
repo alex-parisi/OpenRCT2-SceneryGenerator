@@ -406,6 +406,140 @@ def test_animated_wall_render_count(tmp_path):
     assert count_wall_sprites(is_double_sided=True) == 12
 
 
+def _make_door(tmp_path, frames=5, **overrides):
+    (tmp_path / "dr.obj").write_text("v 0 0 0\nv 0 0 1\nv 0 1 0\nf 1 2 3\n")
+    from openrct2_x7_renderer.mesh import load_mesh
+
+    config = {
+        "id": "openrct2sg.scenery_wall.door",
+        "name": "Door",
+        "is_door": True,
+        "animation": {
+            "frames": [
+                [{"mesh_index": 0, "position": [0, 0, 0], "orientation": [0, 22 * g, 0]}]
+                for g in range(frames)
+            ]
+        },
+        **overrides,
+    }
+    return build_wall_scenery(config, [load_mesh(tmp_path / "dr.obj")])
+
+
+def test_door_loads_five_poses_and_is_not_animated(tmp_path):
+    obj = _make_door(tmp_path)
+    assert obj.is_door
+    assert obj.is_animated is False  # doors take their own paint path
+    assert len(obj.model.meshes[0]) == 5
+
+
+def test_door_wrong_frame_count_rejected(tmp_path):
+    with pytest.raises(LoadError):
+        _make_door(tmp_path, frames=4)
+
+
+def test_door_without_animation_rejected(tmp_path):
+    (tmp_path / "dr.obj").write_text("v 0 0 0\nv 0 0 1\nv 0 1 0\nf 1 2 3\n")
+    from openrct2_x7_renderer.mesh import load_mesh
+
+    with pytest.raises(LoadError):
+        build_wall_scenery(
+            {
+                "id": "openrct2sg.scenery_wall.d",
+                "name": "D",
+                "is_door": True,
+                "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+            },
+            [load_mesh(tmp_path / "dr.obj")],
+        )
+
+
+def test_door_render_count_and_helper(tmp_path):
+    from openrct2_scenery_generator.sprite_renderer import (
+        count_wall_door_sprites,
+        render_wall_door,
+    )
+
+    obj = _make_door(tmp_path)
+    imgs = render_wall_door(_FakeContext(), obj.meshes, obj.model, obj.units_per_tile)
+    assert len(imgs) == 36
+    assert count_wall_door_sprites() == 36
+
+
+def test_door_render_blank_when_empty_and_progress():
+    from openrct2_scenery_generator.sprite_renderer import render_wall_door
+    from openrct2_x7_renderer.types import MeshFrame, Model
+
+    # 5 poses over one empty mesh: every group renders blank body slots (36 total)
+    # and progress fires once per the 9 swing groups.
+    model = Model(meshes=[[MeshFrame(mesh_index=0) for _ in range(5)]])
+    calls: list[tuple[int, int]] = []
+    imgs = render_wall_door(
+        _FakeContext(), [_empty_mesh()], model, progress=lambda a, b: calls.append((a, b))
+    )
+    assert len(imgs) == 36
+    assert len(calls) == 9
+
+
+def test_mirror_wall_x_reflects_and_flips_winding():
+    from openrct2_scenery_generator.sprite_renderer import _mirror_wall_x
+
+    m = _empty_mesh()
+    # A non-empty mesh to exercise the winding flip + X negation.
+    import numpy as _np
+
+    mesh = Mesh(
+        vertices=_np.array([[1, 0, 0], [2, 0, 1], [1, 1, 0]], dtype=_np.float32),
+        normals=_np.array([[1, 0, 0]] * 3, dtype=_np.float32),
+        uvs=_np.zeros((3, 2), dtype=_np.float32),
+        faces=_np.array([[0, 1, 2]], dtype=_np.uint32),
+        face_materials=_np.zeros(1, dtype=_np.uint32),
+        materials=m.materials,
+    )
+    out = _mirror_wall_x(mesh)
+    assert out.vertices[1, 0] == -2.0  # X negated
+    assert out.normals[0, 0] == -1.0
+    assert list(out.faces[0]) == [2, 1, 0]  # winding reversed
+
+
+def test_door_leaf_face_mask_splits_moving_from_static():
+    import numpy as _np
+    from openrct2_scenery_generator.sprite_renderer import _door_leaf_face_mask
+
+    m = _empty_mesh()
+
+    def mesh(verts):
+        return Mesh(
+            vertices=_np.array(verts, dtype=_np.float32),
+            normals=_np.array([[0, 0, 1]] * 4, dtype=_np.float32),
+            uvs=_np.zeros((4, 2), dtype=_np.float32),
+            # face 0 uses the static verts 0,1; face 1 uses the moving vert 3.
+            faces=_np.array([[0, 1, 2], [1, 3, 2]], dtype=_np.uint32),
+            face_materials=_np.zeros(2, dtype=_np.uint32),
+            materials=m.materials,
+        )
+
+    closed = mesh([[0, 0, 0], [0, 1, 0], [0, 0, 0.5], [0, 1, 1]])
+    opened = mesh([[0, 0, 0], [0, 1, 0], [0, 0, 0.5], [1, 1, 1]])  # only vert 3 moved
+    mask = _door_leaf_face_mask(closed, opened)
+    assert list(mask) == [False, True]  # face 0 static (frame), face 1 moving (leaf)
+
+
+def test_door_leaf_face_mask_all_leaf_when_rigid():
+    import numpy as _np
+    from openrct2_scenery_generator.sprite_renderer import _door_leaf_face_mask
+
+    m = _empty_mesh()
+    verts = _np.array([[0, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=_np.float32)
+    rigid = Mesh(
+        vertices=verts, normals=_np.array([[0, 0, 1]] * 3, dtype=_np.float32),
+        uvs=_np.zeros((3, 2), dtype=_np.float32),
+        faces=_np.array([[0, 1, 2]], dtype=_np.uint32),
+        face_materials=_np.zeros(1, dtype=_np.uint32), materials=m.materials,
+    )
+    # Identical closed/open -> nothing moves -> the whole door is treated as leaf.
+    assert list(_door_leaf_face_mask(rigid, rigid)) == [True]
+
+
 def test_render_wall_animated_blank_frames_and_progress():
     from openrct2_scenery_generator.sprite_renderer import render_wall_animated
     from openrct2_x7_renderer.types import MeshFrame, Model

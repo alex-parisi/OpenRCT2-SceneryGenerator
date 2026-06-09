@@ -89,19 +89,30 @@ has_primary_colour: true
 ```
 
 **Large scenery** adds a `tiles:` footprint (friendly tile **indices**, not
-coordinate units):
+coordinate units). Each tile also takes optional per-tile flags: `has_supports`
+/ `allow_supports_above`, a `corners` quadrant mask (default `15` = whole tile),
+and a `walls` edge mask (default `0`):
 
 ```yaml
 object_type: scenery_large
 # ...
 tiles:
   - {x: 0, y: 0, z: 0, clearance: 40}
-  - {x: 1, y: 0, z: 0, clearance: 40}
+  - {x: 1, y: 0, z: 0, clearance: 40, has_supports: true, corners: 15, walls: 0}
 ```
 
 **Walls** use `object_type: scenery_wall`; flag `is_allowed_on_slope`,
 `has_glass`, or `is_double_sided` to select the sprite-block layout. See
 `examples/scenery_wall/` for flat, glass, and double-sided walls.
+
+> **Animated walls** (`is_animated`) and **doors** (`is_door`) carry keyframed
+> geometry in an `animation:` block instead of a static `model:` (the same
+> per-pose shape as animated small scenery). An animated wall is flat-only and
+> cycles a fixed **8** poses; a door provides **5** poses (closed + 4 opening)
+> and the renderer mirrors them for the backward swing, emitting the engine's
+> 36-image door table. Model the swinging leaf as the moving geometry and any
+> posts/lintel as static — the renderer routes the static frame to the door's
+> separate top-occlusion layer automatically.
 
 **Banners** (`object_type: footpath_banner`) render 8 sprites (a back-pole and a
 front pole+sign per direction). The mesh is split by material tag, reusing the
@@ -231,9 +242,15 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 | **Has Glass** | off | Wall has translucent glass panes; materials marked **Glass** are split into a separate overlay block. |
 | **Double-Sided** | off | Distinct front/back faces (materials marked Front/Back via **Wall Side**); the rear block renders offset by +6. |
 | **Tertiary Colour** | off | Adds a third placement colour; pairs with **Remap 3** materials. |
+| **Opaque** | off | Wall fully occludes the tile behind it (no see-through gaps). |
+| **Door** | off | Make the wall an animated door (peeps pass through). Keyframe the leaf swinging open over the **Start/End Frame** range; the renderer samples 5 poses and mirrors them for the backward swing (36-image door table). **Long Door Animation** and an optional **Door Sound** id are nested under it. Mutually exclusive with **Animated**. |
+| **Animated** | off | Cycle a flat-only **8-frame** animation sampled from the scene keyframes over the **Start/End Frame** range. Greys out slope/glass/double-sided (they'd alias the frames) and is mutually exclusive with **Door**. |
 
 > Glass + double-sided isn't supported together — the UI warns and the
-> double-sided flag is dropped.
+> double-sided flag is dropped. Doors and animated walls keyframe their geometry
+> like animated small scenery (set **Deformation** + **Start/End Frame**); model
+> a door's swinging leaf as the moving part and its posts/lintel as static so the
+> static frame lands in the door's separate top-occlusion layer.
 
 **Large Scenery box** *(Type = Large Scenery)*
 
@@ -243,6 +260,9 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 | **Photogenic** | off | Marks the object as a good photo subject (peeps take photos of it). |
 | **Scrolling Mode** | int, default `255`, range `0–255` | `255` = no scrolling text. Only set a real mode for scrolling signs (mode 0 is a *valid, active* mode, so leave it at 255 otherwise). |
 | **Tiles** | list | The multi-tile footprint. Use **＋ / －** to add/remove tiles; each tile exposes **X**, **Y** (tile *indices* along OBJ +X / +Z), **Z** (height offset, coordinate units) and **Clearance** (vertical clearance, coordinate units, default `40`). At least one tile is required. |
+| **Supports** / **Supports Above** *(per tile)* | off | Whether the selected tile draws vertical supports to the ground, and whether another object's supports may rest on top of it. |
+| **Occupied Quadrants** *(per tile)* | all on | Which of the tile's 4 quadrants this piece fills (the `corners` mask; drives selection / terrain clipping). |
+| **Wall Edges** *(per tile)* | all off | Which of the tile's 4 edges allow a wall against this piece (the `walls` mask). |
 
 **Banner box** *(Type = Banner)* — model the sign + poles along the tile edge.
 

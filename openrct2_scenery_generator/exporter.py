@@ -30,6 +30,7 @@ from .sprite_renderer import (
     render_small_scenery_animated,
     render_wall,
     render_wall_animated,
+    render_wall_door,
 )
 from .types import (
     Banner,
@@ -349,13 +350,25 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
     # class as the glass x double drop above).
     allowed_on_slope = obj.is_allowed_on_slope
     has_glass = obj.has_glass
-    if obj.is_animated and (allowed_on_slope or has_glass or double_sided):
+    is_animated = obj.is_animated
+    if is_animated and (allowed_on_slope or has_glass or double_sided):
         log.warning(
             "animated walls are flat-only; ignoring isAllowedOnSlope/hasGlass/isDoubleSided"
         )
         allowed_on_slope = False
         has_glass = False
         double_sided = False
+
+    # A door has its own fixed 36-image table and paint path (PaintWallDoor), so
+    # the glass / double-sided blocks and the plain animation flag don't apply and
+    # would mis-index that table. isAllowedOnSlope stays: it still selects the
+    # door's slope bounding boxes.
+    if obj.is_door:
+        if has_glass or double_sided or is_animated:
+            log.warning("door walls ignore hasGlass / isDoubleSided / isAnimated")
+        has_glass = False
+        double_sided = False
+        is_animated = False
 
     # Emit only the flags that are set (OpenRCT2 treats absent as false; for the
     # inverted isAllowedOnSlope, absent => can't build on slope).
@@ -368,7 +381,7 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
         ("isDoubleSided", double_sided),
         ("isDoor", obj.is_door),
         ("isLongDoorAnimation", obj.is_long_door_animation),
-        ("isAnimated", obj.is_animated),
+        ("isAnimated", is_animated),
         ("isOpaque", obj.is_opaque),
     ):
         if val:
@@ -391,6 +404,13 @@ def _render_wall_sprites(
     object_dir: Path,
     progress: ProgressFn | None = None,
 ) -> list[str]:
+    if obj.is_door:
+        # Fixed 36-image door table (see render_wall_door); takes precedence over
+        # the plain isAnimated path, matching PaintWall's door branch.
+        images = render_wall_door(
+            context, obj.meshes, obj.model, obj.units_per_tile, progress
+        )
+        return write_images_dat_lgx(images, object_dir)
     if obj.is_animated:
         # Flat-only, 8 frames x 2 sprites (see render_wall_animated). The JSON
         # builder drops slope/glass/double for animated walls to match.

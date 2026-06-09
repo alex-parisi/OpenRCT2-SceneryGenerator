@@ -54,3 +54,14 @@ SCENERY_GROUP_DEFAULT_PRIORITY = 40
 # That `* 2` stride collides with the slope image offsets (2..5), so an animated
 # wall is necessarily FLAT-only: 8 frames x 2 flat sprites = 16 images.
 WALL_ANIMATION_FRAMES = 8
+
+# Door walls have a fixed 36-image table (Paint.Wall.cpp PaintWallDoor +
+# DirectionToDoorImageOffset): 9 swing "groups" x 2 screen orientations (the two
+# diagonals, like a flat wall's pair) x 2 sub-images (the engine draws each pose
+# as a base image + the next index, with its own hardcoded bounding boxes). The 9
+# groups are a closed pose, 4 forward-swing poses, then 4 backward-swing poses
+# (the door opens whichever way away from whoever approaches). We sample the
+# closed + 4 forward poses from the author's keyframes and mirror those 4 for the
+# backward swing.
+DOOR_SAMPLE_FRAMES = 5
+DOOR_NUM_IMAGES = 36

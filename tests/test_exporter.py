@@ -302,6 +302,29 @@ def test_export_animated_wall_emits_sixteen_frames(tmp_path):
     assert j["properties"].get("isAnimated") is True
 
 
+def _door(tmp_path, **overrides):
+    (tmp_path / "dr.obj").write_text(_TRI)
+    config = {
+        "id": "openrct2sg.scenery_wall.door",
+        "name": "Door",
+        "is_door": True,
+        "animation": {
+            "frames": [[{"mesh_index": 0, "position": [0, 0, 0]}] for _ in range(5)]
+        },
+        **overrides,
+    }
+    return build_wall_scenery(config, [load_mesh(tmp_path / "dr.obj")])
+
+
+def test_export_door_wall_emits_thirty_six_images(tmp_path):
+    obj = _door(tmp_path)
+    export_wall_scenery_to(obj, FakeContext(), tmp_path / "wall.parkobj", tmp_path / "w")
+    with zipfile.ZipFile(tmp_path / "wall.parkobj") as zf:
+        j = json.loads(zf.read("object.json"))
+    assert j["images"] == ["$LGX:images.dat[0..35]"]
+    assert j["properties"].get("isDoor") is True
+
+
 def test_export_wall_scenery_test_writes_a_png_per_sprite(tmp_path):
     obj = _wall(tmp_path)
     test_dir = tmp_path / "test"

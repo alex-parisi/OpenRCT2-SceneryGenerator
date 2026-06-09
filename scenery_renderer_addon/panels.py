@@ -126,10 +126,15 @@ class VGS_PT_scenery(Panel):
                     dsub = row.row()
                     dsub.enabled = ss.use_door_sound
                     dsub.prop(ss, "door_sound")
+                    dbox.prop(ss, "animation_deform")
+                    row = dbox.row(align=True)
+                    row.prop(ss, "anim_start_frame")
+                    row.prop(ss, "anim_end_frame")
                     dbox.label(
-                        text="Door frames aren't rendered yet; the static panel is used.",
+                        text="Keyframe the leaf swinging open over this range;",
                         icon="INFO",
                     )
+                    dbox.label(text="the backward swing is mirrored automatically.")
 
             if not ss.is_door:
                 abox = box.box()
@@ -190,6 +195,13 @@ class VGS_PT_scenery(Panel):
                 rr = sub.row(align=True)
                 rr.prop(t, "z")
                 rr.prop(t, "clearance")
+                rr = sub.row(align=True)
+                rr.prop(t, "has_supports", toggle=True)
+                rr.prop(t, "allow_supports_above", toggle=True)
+                sub.label(text="Occupied quadrants:")
+                sub.row(align=True).prop(t, "corners", text="")
+                sub.label(text="Wall edges:")
+                sub.row(align=True).prop(t, "walls", text="")
             else:
                 box.label(text="No tiles - add at least one.", icon="ERROR")
 

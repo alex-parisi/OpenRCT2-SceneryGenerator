@@ -20,7 +20,7 @@ from openrct2_x7_renderer.mesh import Mesh
 from openrct2_x7_renderer.ray_trace import VIEWS, Context, FinalizedScene
 from openrct2_x7_renderer.types import IndexedImage, Model
 
-from .constants import WALL_ANIMATION_FRAMES
+from .constants import DOOR_NUM_IMAGES, DOOR_SAMPLE_FRAMES, WALL_ANIMATION_FRAMES
 
 _IDENTITY3 = np.eye(3, dtype=np.float64)
 
@@ -405,6 +405,124 @@ def render_wall_animated(
             images += _render_wall_pair(context, combined, view_shift)
         if progress is not None:
             progress(f + 1, WALL_ANIMATION_FRAMES)
+    return images
+
+
+# A door's two screen orientations, as (view index, image-slot offset). The two
+# diagonals match a flat wall's pair: dir 1/3 reads the first sprite (VIEWS[1]),
+# dir 0/2 the second (VIEWS[0]); see render_wall's flat block.
+_DOOR_ORIENTATION_VIEWS = (1, 0)
+
+
+def _mirror_wall_x(mesh: Mesh) -> Mesh:
+    """Reflect a wall mesh across the X=0 plane (the wall's thin axis): negate X
+    on vertices and normals and reverse each triangle's winding so faces stay
+    outward-facing. This turns a door leaf's forward (+X) swing into the mirrored
+    backward (-X) swing. UVs and normals are per-vertex, so they follow the
+    flipped winding unchanged."""
+    v = mesh.vertices.copy()
+    v[:, 0] *= -1.0
+    n = mesh.normals.copy()
+    n[:, 0] *= -1.0
+    return Mesh(
+        vertices=v,
+        normals=n,
+        uvs=mesh.uvs,
+        faces=mesh.faces[:, ::-1].copy(),
+        face_materials=mesh.face_materials,
+        materials=mesh.materials,
+    )
+
+
+def count_wall_door_sprites() -> int:
+    """A door wall always has the engine's fixed 36-image table."""
+    return DOOR_NUM_IMAGES
+
+
+# A vertex that shifts by more than this (OBJ units) between the closed and fully
+# open pose counts as part of the swinging leaf; anything stiller is the static
+# door frame. Small enough to ignore float noise, far below a real swing.
+_DOOR_MOTION_EPS = 1e-4
+
+
+def _door_leaf_face_mask(closed: Mesh, opened: Mesh) -> NDArray[np.bool_]:
+    """Classify each face as part of the swinging leaf (True) or the static frame
+    (False) by whether any of its vertices move between the closed and open pose.
+
+    The two combined meshes share topology (same meshes + model), so vertices
+    correspond index-for-index. If nothing moves (a door modelled as one rigid
+    piece) every face is treated as leaf, so the whole door falls into the body
+    layer and the frame layer stays empty."""
+    moved_vertex = np.abs(closed.vertices - opened.vertices).max(axis=1) > _DOOR_MOTION_EPS
+    moved_face: NDArray[np.bool_] = moved_vertex[closed.faces].any(axis=1)
+    if not moved_face.any():
+        return np.ones(closed.faces.shape[0], dtype=bool)
+    return moved_face
+
+
+def render_wall_door(
+    context: Context,
+    meshes: list[Mesh],
+    model: Model,
+    units_per_tile: float = TILE_SIZE,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[IndexedImage]:
+    """Render a door-wall sprite set in the engine's image order (36 images).
+
+    The engine (Paint.Wall.cpp PaintWallDoor) indexes a door as 9 swing "groups",
+    each contributing 4 images: for the two screen diagonals (dir 1/3 then dir
+    0/2) it draws a body sprite plus the next index, under two hardcoded bounding
+    boxes -- a thin hinge-edge slab (the swinging leaf) and a top strip spanning
+    the opening (the static frame / lintel). So the layout is, per group g:
+        [4g+0] dir 1/3 leaf, [4g+1] dir 1/3 frame, [4g+2] dir 0/2 leaf, [4g+3] frame.
+
+    The 9 groups are: a closed pose, 4 forward-swing poses, then 4 backward-swing
+    poses. `model` carries `DOOR_SAMPLE_FRAMES` keyframed poses (closed + 4 open);
+    the backward groups are those 4 open poses reflected across the wall plane
+    (`_mirror_wall_x`), i.e. the leaf swinging the other way.
+
+    Geometry is split into the moving leaf (the body slot, rendered per pose) and
+    the static frame (the top slot), matching the engine's two bounding boxes so a
+    peep walking through sorts correctly under the lintel. The frame is the same
+    in every pose and is not mirrored, so it is rendered once per view and reused.
+    A door modelled as a single rigid piece classifies wholly as leaf, leaving the
+    frame layer blank."""
+    s = units_per_tile / TILE_SIZE
+    view_shift = {v: sh * s for v, sh in _WALL_VIEW_SHIFT.items()}
+    blank = IndexedImage.blank(1, 1)
+
+    def render(mesh: Mesh, view: int) -> IndexedImage:
+        if mesh.faces.shape[0] == 0:
+            return blank
+        translation = np.array((0.0, 0.0, view_shift[view]), dtype=np.float64)
+        return _render_scene_view(context, mesh, translation, VIEWS[view])
+
+    # Bake the sampled poses (closed = frame 0, then the 4 opening frames) and
+    # split each into the moving leaf and the static frame.
+    sampled = [
+        combine_model_world(meshes, model, frame=f) for f in range(DOOR_SAMPLE_FRAMES)
+    ]
+    leaf_mask = _door_leaf_face_mask(sampled[0], sampled[-1])
+    frame_mesh = _submesh(sampled[0], ~leaf_mask)
+
+    # The leaf per render group: closed, the 4 forward poses, then those 4 poses
+    # reflected for the backward swing.
+    forward_leaves = [_submesh(m, leaf_mask) for m in sampled[1:DOOR_SAMPLE_FRAMES]]
+    leaves = [
+        _submesh(sampled[0], leaf_mask),
+        *forward_leaves,
+        *(_mirror_wall_x(m) for m in forward_leaves),
+    ]
+
+    # The static frame is identical for every group, so render it once per view.
+    frame_imgs = {view: render(frame_mesh, view) for view in _DOOR_ORIENTATION_VIEWS}
+
+    images: list[IndexedImage] = []
+    for gi, leaf in enumerate(leaves):
+        for view in _DOOR_ORIENTATION_VIEWS:
+            images += [render(leaf, view), frame_imgs[view]]
+        if progress is not None:
+            progress(gi + 1, len(leaves))
     return images
 
 
