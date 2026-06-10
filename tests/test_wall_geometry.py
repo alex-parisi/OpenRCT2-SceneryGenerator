@@ -5,12 +5,14 @@ Tests for the pure wall-geometry transforms in the scenery sprite renderer.
 import numpy as np
 from openrct2_scenery_generator.sprite_renderer import (
     _CORNER_BY_DIR,
+    _anchor_corners,
     _corners_by_dir,
     _filter_glass,
     _filter_side,
-    _rotate_y180,
     _shear_wall,
     _submesh,
+    _wall_view_translation,
+    small_scenery_paint_anchor,
 )
 from openrct2_x7_renderer.constants import TILE_SIZE
 from openrct2_x7_renderer.mesh import Material, Mesh
@@ -74,25 +76,52 @@ def test_shear_degenerate_zero_span_does_not_divide_by_zero():
     assert np.all(np.isfinite(out.vertices))
 
 
-def test_rotate_y180_negates_x_and_z():
-    panel = _panel()
-    panel.vertices[:] = [[1, 0, 2], [1, 0, -2], [1, 1, 2], [1, 1, -2]]
-    out = _rotate_y180(panel)
-    assert np.allclose(out.vertices[:, 0], -panel.vertices[:, 0])
-    assert np.allclose(out.vertices[:, 2], -panel.vertices[:, 2])
-    assert np.allclose(out.vertices[:, 1], panel.vertices[:, 1])
+def test_wall_view_translations_reproduce_vanilla_anchors():
+    # Vanilla wall sprites ("/" = columns [-31, 1], "\" = [-1, 31] from the
+    # anchor) pin these down exactly; see WALLBR32 / WALLJB16.
+    upt = 32.0  # one OBJ unit per world unit for easy reading
+    assert np.allclose(_wall_view_translation(0, upt), [-1.0, 0.0, -16.0])
+    assert np.allclose(_wall_view_translation(1, upt), [0.0, 0.0, -15.0])
+    assert np.allclose(_wall_view_translation(2, upt), [1.0, 0.0, 16.0])
+    assert np.allclose(_wall_view_translation(3, upt), [0.0, 0.0, 15.0])
 
 
-def test_rotate_y180_also_flips_normals():
-    out = _rotate_y180(_panel())
-    assert np.allclose(out.normals[:, 0], -1.0)
+def test_wall_view_translations_scale_with_units_per_tile():
+    t_full = _wall_view_translation(1, 32.0)
+    t_half = _wall_view_translation(1, 16.0)
+    assert np.allclose(t_half, t_full / 2.0)
 
 
-def test_rotate_y180_is_a_proper_rotation():
-    panel = _panel()
-    twice = _rotate_y180(_rotate_y180(panel))
-    assert np.allclose(twice.vertices, panel.vertices)
-    assert np.allclose(twice.normals, panel.normals)
+def test_wall_view_translations_are_point_symmetric():
+    # Views 2/3 anchor the panel at the opposite end of the edge from views 0/1.
+    upt = TILE_SIZE
+    assert np.allclose(_wall_view_translation(2, upt), -_wall_view_translation(0, upt))
+    assert np.allclose(_wall_view_translation(3, upt), -_wall_view_translation(1, upt))
+
+
+def test_small_scenery_paint_anchor_default_is_none():
+    assert small_scenery_paint_anchor("4/4", False, False) is None
+    assert small_scenery_paint_anchor("1/4", False, False) is None
+    assert small_scenery_paint_anchor("4/4+D", False, False) is None
+
+
+def test_small_scenery_paint_anchor_half_tile_and_voffset():
+    assert small_scenery_paint_anchor("2/4", False, False) == 3.0
+    assert small_scenery_paint_anchor("4/4+D", True, False) == 3.0
+    assert small_scenery_paint_anchor("4/4+D", True, True) == 1.0
+    # Half-tile takes the engine's half-tile paint path regardless of voffset.
+    assert small_scenery_paint_anchor("2/4", True, True) == 3.0
+
+
+def test_anchor_corners_match_tile_corner_pattern():
+    # The anchor at the tile origin (0, 0) is exactly the large-scenery
+    # reference corner pattern.
+    assert np.allclose(_anchor_corners(0.0, TILE_SIZE), _CORNER_BY_DIR)
+
+
+def test_anchor_corners_rotate_like_the_views():
+    corners = _anchor_corners(3.0, 32.0)  # 13 world units from centre
+    assert corners == [(13.0, 13.0), (-13.0, 13.0), (-13.0, -13.0), (13.0, -13.0)]
 
 
 def test_corners_by_dir_default_matches_module_constant():

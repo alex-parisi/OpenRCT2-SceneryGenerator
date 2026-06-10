@@ -48,6 +48,10 @@ class SmallScenery:
     requires_flat_surface: bool = False
     prohibit_walls: bool = False
     is_tree: bool = False
+    # Engine VOFFSET_CENTRE: paint with a near-full-tile bounding box (and a
+    # tile-corner anchor). Vanilla sets this on diagonal walls and other
+    # wall-like full-tile pieces so they sort correctly.
+    voffset_centre: bool = False
 
     # Color remap
     has_primary_colour: bool = False

@@ -27,10 +27,12 @@ from .sprite_renderer import (
     render_large_scenery,
     render_path_addition,
     render_small_scenery,
+    render_small_scenery_anchored,
     render_small_scenery_animated,
     render_wall,
     render_wall_animated,
     render_wall_door,
+    small_scenery_paint_anchor,
 )
 from .types import (
     Banner,
@@ -72,6 +74,8 @@ def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
         "hasSecondaryColour": obj.has_secondary_colour,
         "hasTertiaryColour": obj.has_tertiary_colour,
     }
+    if obj.voffset_centre:
+        properties["SMALL_SCENERY_FLAG_VOFFSET_CENTRE"] = True
     if obj.is_animated:
         properties["isAnimated"] = True
         properties["animationDelay"] = obj.animation_delay
@@ -87,15 +91,26 @@ def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
     return out
 
 
+def _small_scenery_anchor(obj: SmallScenery) -> float | None:
+    return small_scenery_paint_anchor(obj.shape, obj.voffset_centre, obj.prohibit_walls)
+
+
 def _render_sprites(
     obj: SmallScenery,
     context: Context,
     object_dir: Path,
     progress: ProgressFn | None = None,
 ) -> list[str]:
+    anchor = _small_scenery_anchor(obj)
     if obj.is_animated:
         images = render_small_scenery_animated(
-            context, obj.meshes, obj.model, obj.num_pose_groups, progress
+            context, obj.meshes, obj.model, obj.num_pose_groups, progress,
+            anchor=anchor, units_per_tile=obj.units_per_tile,
+        )
+    elif anchor is not None:
+        combined = combine_model_world(obj.meshes, obj.model)
+        images = render_small_scenery_anchored(
+            context, combined, anchor, obj.num_rotations, obj.units_per_tile, progress
         )
     else:
         with context.begin_render() as scene:
@@ -162,9 +177,11 @@ def export_small_scenery_test(
     iteration."""
     test_dir = Path(test_dir)
     test_dir.mkdir(parents=True, exist_ok=True)
+    anchor = _small_scenery_anchor(obj)
     if obj.is_animated:
         images = render_small_scenery_animated(
-            context, obj.meshes, obj.model, obj.num_pose_groups
+            context, obj.meshes, obj.model, obj.num_pose_groups,
+            anchor=anchor, units_per_tile=obj.units_per_tile,
         )
         for d in range(4):
             write_png(images[d], test_dir / f"base_{d}.png")
@@ -174,13 +191,21 @@ def export_small_scenery_test(
         write_png(combine_indexed_images(images[:4]), test_dir / "preview_combined.png")
         return
     rotations: list[IndexedImage] = []
-    with context.begin_render() as scene:
-        add_model_to_scene(scene, obj.meshes, obj.model, clamp_frame=True)
-        with scene.finalize() as ready:
-            for i in range(obj.num_rotations):
-                img = ready.render_view(VIEWS[i])
-                write_png(img, test_dir / f"scenery_{i}.png")
-                rotations.append(img)
+    if anchor is not None:
+        combined = combine_model_world(obj.meshes, obj.model)
+        rotations = render_small_scenery_anchored(
+            context, combined, anchor, obj.num_rotations, obj.units_per_tile
+        )
+        for i, img in enumerate(rotations):
+            write_png(img, test_dir / f"scenery_{i}.png")
+    else:
+        with context.begin_render() as scene:
+            add_model_to_scene(scene, obj.meshes, obj.model, clamp_frame=True)
+            with scene.finalize() as ready:
+                for i in range(obj.num_rotations):
+                    img = ready.render_view(VIEWS[i])
+                    write_png(img, test_dir / f"scenery_{i}.png")
+                    rotations.append(img)
     write_png(combine_indexed_images(rotations), test_dir / "preview_combined.png")
 
 

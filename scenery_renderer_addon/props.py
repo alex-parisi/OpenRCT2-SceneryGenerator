@@ -142,7 +142,6 @@ class VGSMaterialSettings(PropertyGroup):
         default="NONE",
     )
     is_mask: BoolProperty(name="Mask", default=False)
-    is_visible_mask: BoolProperty(name="Visible Mask", default=False)
     no_ao: BoolProperty(name="No Ambient Occlusion", default=False)
     edge: BoolProperty(name="Edge AA", default=False)
     dark_edge: BoolProperty(name="Dark Edge AA", default=False)
@@ -218,6 +217,15 @@ class VGSObjectSettings(PropertyGroup):
         description="Whether this object is part of the scenery model",
         items=OBJECT_ROLE_ITEMS,
         default="GEOMETRY",
+    )
+    is_ghost: BoolProperty(
+        name="Ghost",
+        description=(
+            "Render this object as ghost geometry: primary rays pass through it "
+            "(so it is not drawn) while it still contributes to the silhouette "
+            "and ambient occlusion of solid parts"
+        ),
+        default=False,
     )
 
 
@@ -327,6 +335,17 @@ class VGSScenerySettings(PropertyGroup):
     requires_flat_surface: BoolProperty(name="Requires Flat Surface", default=False)
     prohibit_walls: BoolProperty(name="Prohibit Walls", default=False)
     is_tree: BoolProperty(name="Tree", default=False)
+    voffset_centre: BoolProperty(
+        name="Wide Bounding Box",
+        description=(
+            "Paint with a near-full-tile bounding box anchored at the tile corner "
+            "(SMALL_SCENERY_FLAG_VOFFSET_CENTRE). Fixes draw-order glitches for "
+            "diagonal and other wall-like full-tile objects, which otherwise sort "
+            "from a tiny box at the tile centre; combined with Prohibit Walls the "
+            "box covers the whole tile"
+        ),
+        default=False,
+    )
 
     # Small-scenery animation
     is_animated: BoolProperty(

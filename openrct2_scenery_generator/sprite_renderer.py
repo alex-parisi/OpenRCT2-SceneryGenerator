@@ -8,9 +8,14 @@ from typing import Any
 import numpy as np
 from numpy.typing import NDArray
 from openrct2_x7_renderer.constants import TILE_SIZE
-from openrct2_x7_renderer.geometry import assign_faces_to_tiles, combine_model_world, subset_mesh
+from openrct2_x7_renderer.geometry import (
+    assign_faces_to_tiles,
+    combine_model_world,
+    split_mesh_by_ghost,
+    subset_mesh,
+)
 from openrct2_x7_renderer.mesh import Mesh
-from openrct2_x7_renderer.ray_trace import VIEWS, Context, FinalizedScene
+from openrct2_x7_renderer.ray_trace import VIEWS, Context, FinalizedScene, SceneBuilder
 from openrct2_x7_renderer.types import IndexedImage, Model
 
 from .constants import DOOR_NUM_IMAGES, DOOR_SAMPLE_FRAMES, WALL_ANIMATION_FRAMES
@@ -18,12 +23,20 @@ from .constants import DOOR_NUM_IMAGES, DOOR_SAMPLE_FRAMES, WALL_ANIMATION_FRAME
 _IDENTITY3 = np.eye(3, dtype=np.float64)
 
 
+def _add_split_ghost(scene: SceneBuilder, mesh: Mesh, translation: NDArray[np.float64]) -> None:
+    """Add `mesh` to `scene`, splitting ghost faces into their own GHOST model so
+    the renderer traces through them (e.g. baked-in ghost geometry)."""
+    for sub_mesh, mask in split_mesh_by_ghost(mesh):
+        scene.add_model(sub_mesh, _IDENTITY3, translation, mask)
+
+
 def _render_scene_view(
     context: Context, mesh: Mesh, translation: NDArray[np.float64], view: NDArray[np.float64]
 ) -> IndexedImage:
     """Render a single model under a single view in its own scene."""
     with context.begin_render() as scene:
-        with scene.add_model(mesh, _IDENTITY3, translation, 0).finalize() as ready:
+        _add_split_ghost(scene, mesh, translation)
+        with scene.finalize() as ready:
             return ready.render_view(view)
 
 
@@ -32,7 +45,8 @@ def _render_scene_views(
 ) -> list[IndexedImage]:
     """Render a single model under several views, sharing one finalized scene."""
     with context.begin_render() as scene:
-        with scene.add_model(mesh, _IDENTITY3, translation, 0).finalize() as ready:
+        _add_split_ghost(scene, mesh, translation)
+        with scene.finalize() as ready:
             return [ready.render_view(v) for v in views]
 
 # OpenRCT2 anchors large-scenery sprites at the tile's reference CORNER (paint
@@ -76,15 +90,73 @@ def render_small_scenery(
     return images
 
 
+# Small-scenery paint anchors. The engine blits a full-tile sprite at the
+# view-space point {15,15} (~tile centre); a half-tile ("2/4") sprite at {3,3};
+# a VOFFSET_CENTRE sprite at {3,3}, or {1,1} when prohibitWalls is also set.
+# Sprites for the non-centre anchors must be rendered against that anchor or
+# they land up to 13 px away from their tile.
+def small_scenery_paint_anchor(
+    shape: str, voffset_centre: bool, prohibit_walls: bool
+) -> float | None:
+    """The engine's paint-anchor coordinate (same on both axes) for a small
+    scenery object, or None for the default tile-centre render path."""
+    if shape.startswith("2/4"):
+        return 3.0
+    if voffset_centre:
+        return 1.0 if prohibit_walls else 3.0
+    return None
+
+
+def _anchor_corners(anchor: float, units_per_tile: float) -> list[tuple[float, float]]:
+    """Per-direction OBJ-space (x, z) points that project onto the engine's
+    view-space paint anchor (anchor, anchor); same rotation pattern as
+    _CORNER_BY_DIR."""
+    d = (anchor - 16.0) * units_per_tile / 32.0
+    return [(-d, -d), (d, -d), (d, d), (-d, d)]
+
+
+def render_small_scenery_anchored(
+    context: Context,
+    combined: Mesh,
+    anchor: float,
+    num_rotations: int = 4,
+    units_per_tile: float = TILE_SIZE,
+    progress: Callable[[int, int], None] | None = None,
+) -> list[IndexedImage]:
+    """Render a small-scenery sprite set against a non-centre paint anchor."""
+    if combined.faces.shape[0] == 0:
+        return [IndexedImage.blank(1, 1) for _ in range(num_rotations)]
+    corners = _anchor_corners(anchor, units_per_tile)
+    images = []
+    for d in range(num_rotations):
+        ox, oz = corners[d]
+        translation = np.array([-ox, 0.0, -oz], dtype=np.float64)
+        images.append(_render_scene_view(context, combined, translation, VIEWS[d]))
+        if progress is not None:
+            progress(d + 1, num_rotations)
+    return images
+
+
 def _render_pose_rotations(
-    context: Context, meshes: list[Mesh], model: Model, frame: int
+    context: Context,
+    meshes: list[Mesh],
+    model: Model,
+    frame: int,
+    anchor_corners: list[tuple[float, float]] | None = None,
 ) -> list[IndexedImage]:
     """Bake pose frame's placements and render all 4 cardinal rotations,
-    anchored at the tile center."""
+    anchored at the tile center (or at per-direction anchor points)."""
     combined = combine_model_world(meshes, model, frame=frame)
-    return _render_scene_views(
-        context, combined, np.zeros(3, dtype=np.float64), [VIEWS[d] for d in range(4)]
-    )
+    if anchor_corners is None:
+        return _render_scene_views(
+            context, combined, np.zeros(3, dtype=np.float64), [VIEWS[d] for d in range(4)]
+        )
+    return [
+        _render_scene_view(
+            context, combined, np.array([-ox, 0.0, -oz], dtype=np.float64), VIEWS[d]
+        )
+        for d, (ox, oz) in enumerate(anchor_corners)
+    ]
 
 
 def render_small_scenery_animated(
@@ -93,14 +165,18 @@ def render_small_scenery_animated(
     model: Model,
     num_pose_groups: int,
     progress: Callable[[int, int], None] | None = None,
+    *,
+    anchor: float | None = None,
+    units_per_tile: float = TILE_SIZE,
 ) -> list[IndexedImage]:
     """Render an animated small-scenery sprite set in the engine's image order"""
-    base = _render_pose_rotations(context, meshes, model, 0)
+    corners = None if anchor is None else _anchor_corners(anchor, units_per_tile)
+    base = _render_pose_rotations(context, meshes, model, 0, corners)
     if progress is not None:
         progress(1, num_pose_groups)
     images: list[IndexedImage] = list(base) + list(base)
     for g in range(1, num_pose_groups):
-        images.extend(_render_pose_rotations(context, meshes, model, g))
+        images.extend(_render_pose_rotations(context, meshes, model, g, corners))
         if progress is not None:
             progress(g + 1, num_pose_groups)
     return images
@@ -111,17 +187,48 @@ def count_large_scenery_sprites(num_tiles: int) -> int:
     return LARGE_SCENERY_PREVIEW_SLOTS + 4 * num_tiles
 
 
-# Walls:
-_WALL_FLAT_VIEWS = (1, 0)
-# Per-view half-pixel grid alignment.
-_HALF_PIXEL = TILE_SIZE / 64.0
-_WALL_VIEW_SHIFT = {
-    1: -_HALF_TILE + 3.0 * _HALF_PIXEL,
-    0: -_HALF_TILE + 1.0 * _HALF_PIXEL,
-}
+# Walls. OpenRCT2 paints a wall with view-space direction d = (edge + rotation) & 3:
+#   d=0 ("\", far edge,  paint anchor {0,0}):  flat image 1
+#   d=1 ("/", near edge, paint anchor {1,31}): flat image 0 (+6 when double-sided)
+#   d=2 ("\", near edge, paint anchor {31,0}): flat image 1 (+6 when double-sided)
+#   d=3 ("/", far edge,  paint anchor {2,1}):  flat image 0
+# A sprite's true content is the authored panel rendered under VIEWS[d]. The
+# front images are shown unmodified at the far edges (d=0/3), so they render
+# under views 0 and 3; a double-sided wall's back images are the truth for the
+# near edges and render under views 1 and 2. (At the directions where the
+# engine reuses a sprite the wall inherently appears end-mirrored, exactly as
+# vanilla walls do.)
+#
+# The per-view translations reproduce vanilla sprite anchoring (verified
+# against WALLBR32 / WALLJB16 / WALLBRDR .DAT offsets): every "/" sprite spans
+# screen columns [-31, 1] from its anchor and every "\" sprite [-1, 31], with
+# the wall plane one world unit inside the tile boundary.
 # One land-height step as a vertical shear of the panel end, in OBJ Y.
 _WALL_SLOPE_RISE = 1.34
 _WALL_SLOPE_DOWN_RAISE = 1.2975
+
+
+def _wall_view_translation(view: int, units_per_tile: float) -> NDArray[np.float64]:
+    """OBJ-space translation anchoring the authored wall panel for `view`."""
+    e = units_per_tile / 32.0  # one OpenRCT2 world unit
+    half = units_per_tile / 2.0
+    tx, tz = {
+        0: (-e, -half),
+        1: (0.0, -half + e),
+        2: (e, half),
+        3: (0.0, half - e),
+    }[view]
+    return np.array((tx, 0.0, tz), dtype=np.float64)
+
+
+def _render_wall_view(
+    context: Context, mesh: Mesh, view: int, units_per_tile: float
+) -> IndexedImage:
+    """Render the wall panel under one cardinal view, anchored for the engine's
+    per-direction wall paint offsets."""
+    return _render_scene_view(
+        context, mesh, _wall_view_translation(view, units_per_tile), VIEWS[view]
+    )
 
 
 def _shear_wall(
@@ -145,18 +252,6 @@ def _shear_wall(
     )
 
 
-def _render_wall_pair(
-    context: Context, mesh: Mesh, view_shift: dict[int, float] | None = None
-) -> list[IndexedImage]:
-    """Render a wall mesh under the two diagonal views, each end-anchored with its
-    own per-view shift."""
-    if view_shift is None:
-        view_shift = _WALL_VIEW_SHIFT
-    out: list[IndexedImage] = []
-    for v in _WALL_FLAT_VIEWS:
-        translation = np.array((0.0, 0.0, view_shift[v]), dtype=np.float64)
-        out.append(_render_scene_view(context, mesh, translation, VIEWS[v]))
-    return out
 
 
 def _submesh(mesh: Mesh, keep: NDArray[np.bool_]) -> Mesh:
@@ -198,23 +293,9 @@ def _filter_side(mesh: Mesh, *, drop_attr: str) -> Mesh:
     return _submesh(mesh, keep)
 
 
-def _rotate_y180(mesh: Mesh) -> Mesh:
-    """Rotate a mesh 180 deg about the vertical (Y) axis: negate X and Z on
-    vertices and normals."""
-    v = mesh.vertices.copy()
-    v[:, 0] *= -1.0
-    v[:, 2] *= -1.0
-    n = mesh.normals.copy()
-    n[:, 0] *= -1.0
-    n[:, 2] *= -1.0
-    return Mesh(
-        vertices=v,
-        normals=n,
-        uvs=mesh.uvs,
-        faces=mesh.faces,
-        face_materials=mesh.face_materials,
-        materials=mesh.materials,
-    )
+# The two paint views of a block: ("/" view, "\" view)
+_WALL_FRONT_VIEWS = (3, 0)
+_WALL_BACK_VIEWS = (1, 2)
 
 
 def _render_wall_block(
@@ -222,24 +303,36 @@ def _render_wall_block(
     mesh: Mesh,
     slope: bool,
     *,
+    views: tuple[int, int],
+    units_per_tile: float = TILE_SIZE,
     rise: float = _WALL_SLOPE_RISE,
     down_raise: float = _WALL_SLOPE_DOWN_RAISE,
-    view_shift: dict[int, float] | None = None,
 ) -> list[IndexedImage]:
-    """One wall image block: 2 flat sprites, plus (if `slope`) 4 slope-sheared
-    sprites: offsets 2,3 = slope-up, 4,5 = slope-down, each in the two diagonal
-    orientations."""
-    if view_shift is None:
-        view_shift = _WALL_VIEW_SHIFT
+    """One wall image block rendered under its two paint views `views` =
+    ("/" view, "\\" view): (3, 0) for front and glass blocks, (1, 2) for a
+    double-sided wall's back block.
+
+    Block offsets 0/1 are the flat sprites. With `slope`, offsets 2-5 follow
+    the engine's table — image 2 = (d1, slope 2) / (d3, slope 1), image 3 =
+    (d0, slope 2) / (d2, slope 1), images 4/5 the opposite slopes — which makes
+    the sheared end alternate between the two views and flip between the front
+    and back blocks."""
+    va, vb = views
     n = 6 if slope else 2
     if mesh.faces.shape[0] == 0:
         return [IndexedImage.blank(1, 1) for _ in range(n)]
-    images = _render_wall_pair(context, mesh, view_shift)
+
+    def render(m: Mesh, view: int) -> IndexedImage:
+        return _render_wall_view(context, m, view, units_per_tile)
+
+    images = [render(mesh, va), render(mesh, vb)]
     if slope:
-        images += _render_wall_pair(context, _shear_wall(mesh, +1.0, rise), view_shift)
-        images += _render_wall_pair(
-            context, _shear_wall(mesh, -1.0, rise, y_raise=down_raise), view_shift
-        )
+        up = _shear_wall(mesh, +1.0, rise)
+        down = _shear_wall(mesh, -1.0, rise, y_raise=down_raise)
+        if views == _WALL_FRONT_VIEWS:
+            images += [render(down, va), render(up, vb), render(up, va), render(down, vb)]
+        else:
+            images += [render(up, va), render(down, vb), render(down, va), render(up, vb)]
     return images
 
 
@@ -254,23 +347,25 @@ def render_wall(
     """Render a wall sprite set."""
     s = units_per_tile / TILE_SIZE
     anchors: dict[str, Any] = {
+        "units_per_tile": units_per_tile,
         "rise": _WALL_SLOPE_RISE * s,
         "down_raise": _WALL_SLOPE_DOWN_RAISE * s,
-        "view_shift": {v: sh * s for v, sh in _WALL_VIEW_SHIFT.items()},
     }
     if has_glass:
         body = _filter_glass(combined, want_glass=False)
         glass = _filter_glass(combined, want_glass=True)
-        return _render_wall_block(context, body, slope=True, **anchors) + _render_wall_block(
-            context, glass, slope=True, **anchors
-        )
+        return _render_wall_block(
+            context, body, slope=True, views=_WALL_FRONT_VIEWS, **anchors
+        ) + _render_wall_block(context, glass, slope=True, views=_WALL_FRONT_VIEWS, **anchors)
     if is_double_sided:
         front = _filter_side(combined, drop_attr="is_back")
-        back = _rotate_y180(_filter_side(combined, drop_attr="is_front"))
-        return _render_wall_block(context, front, slope=True, **anchors) + _render_wall_block(
-            context, back, slope=True, **anchors
-        )
-    return _render_wall_block(context, combined, slope=allowed_on_slope, **anchors)
+        back = _filter_side(combined, drop_attr="is_front")
+        return _render_wall_block(
+            context, front, slope=True, views=_WALL_FRONT_VIEWS, **anchors
+        ) + _render_wall_block(context, back, slope=True, views=_WALL_BACK_VIEWS, **anchors)
+    return _render_wall_block(
+        context, combined, slope=allowed_on_slope, views=_WALL_FRONT_VIEWS, **anchors
+    )
 
 
 def count_wall_sprites(
@@ -293,40 +388,19 @@ def render_wall_animated(
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
     """Render an animated wall sprite set in the engine's image order."""
-    s = units_per_tile / TILE_SIZE
-    view_shift = {v: sh * s for v, sh in _WALL_VIEW_SHIFT.items()}
     images: list[IndexedImage] = []
     for f in range(WALL_ANIMATION_FRAMES):
         combined = combine_model_world(meshes, model, frame=f)
         if combined.faces.shape[0] == 0:
             images += [IndexedImage.blank(1, 1), IndexedImage.blank(1, 1)]
         else:
-            images += _render_wall_pair(context, combined, view_shift)
+            images += [
+                _render_wall_view(context, combined, 3, units_per_tile),
+                _render_wall_view(context, combined, 0, units_per_tile),
+            ]
         if progress is not None:
             progress(f + 1, WALL_ANIMATION_FRAMES)
     return images
-
-
-# A door's two screen orientations
-_DOOR_ORIENTATION_VIEWS = (1, 0)
-
-
-def _mirror_wall_x(mesh: Mesh) -> Mesh:
-    """Reflect a wall mesh across the X=0 plane (the wall's thin axis): negate X
-    on vertices and normals and reverse each triangle's winding so faces stay
-    outward-facing."""
-    v = mesh.vertices.copy()
-    v[:, 0] *= -1.0
-    n = mesh.normals.copy()
-    n[:, 0] *= -1.0
-    return Mesh(
-        vertices=v,
-        normals=n,
-        uvs=mesh.uvs,
-        faces=mesh.faces[:, ::-1].copy(),
-        face_materials=mesh.face_materials,
-        materials=mesh.materials,
-    )
 
 
 def count_wall_door_sprites() -> int:
@@ -356,38 +430,40 @@ def render_wall_door(
     units_per_tile: float = TILE_SIZE,
     progress: Callable[[int, int], None] | None = None,
 ) -> list[IndexedImage]:
-    """Render a door-wall sprite set in the engine's image order."""
-    s = units_per_tile / TILE_SIZE
-    view_shift = {v: sh * s for v, sh in _WALL_VIEW_SHIFT.items()}
+    """Render a door-wall sprite set in the engine's image order.
+
+    The fixed 36-image table is 9 groups of (leaf "/", frame "/", leaf "\\",
+    frame "\\"). Group 0 is the closed pose — shared by both edge pairs, so it
+    renders under the far-edge views like a plain wall. Groups 1-4 are the
+    swing poses for the near edges (views 1 and 2) and groups 5-8 the same
+    poses for the far edges (views 3 and 0), which is where the engine's
+    "mirrored swing" images come from."""
     blank = IndexedImage.blank(1, 1)
 
     def render(mesh: Mesh, view: int) -> IndexedImage:
         if mesh.faces.shape[0] == 0:
             return blank
-        translation = np.array((0.0, 0.0, view_shift[view]), dtype=np.float64)
-        return _render_scene_view(context, mesh, translation, VIEWS[view])
+        return _render_wall_view(context, mesh, view, units_per_tile)
 
     sampled = [
         combine_model_world(meshes, model, frame=f) for f in range(DOOR_SAMPLE_FRAMES)
     ]
     leaf_mask = _door_leaf_face_mask(sampled[0], sampled[-1])
     frame_mesh = _submesh(sampled[0], ~leaf_mask)
+    closed_leaf = _submesh(sampled[0], leaf_mask)
+    swing_leaves = [_submesh(m, leaf_mask) for m in sampled[1:DOOR_SAMPLE_FRAMES]]
 
-    forward_leaves = [_submesh(m, leaf_mask) for m in sampled[1:DOOR_SAMPLE_FRAMES]]
-    leaves = [
-        _submesh(sampled[0], leaf_mask),
-        *forward_leaves,
-        *(_mirror_wall_x(m) for m in forward_leaves),
-    ]
+    frame_imgs = {view: render(frame_mesh, view) for view in range(4)}
 
-    frame_imgs = {view: render(frame_mesh, view) for view in _DOOR_ORIENTATION_VIEWS}
+    groups: list[tuple[Mesh, int, int]] = [(closed_leaf, *_WALL_FRONT_VIEWS)]
+    groups += [(leaf, *_WALL_BACK_VIEWS) for leaf in swing_leaves]
+    groups += [(leaf, *_WALL_FRONT_VIEWS) for leaf in swing_leaves]
 
     images: list[IndexedImage] = []
-    for gi, leaf in enumerate(leaves):
-        for view in _DOOR_ORIENTATION_VIEWS:
-            images += [render(leaf, view), frame_imgs[view]]
+    for gi, (leaf, va, vb) in enumerate(groups):
+        images += [render(leaf, va), frame_imgs[va], render(leaf, vb), frame_imgs[vb]]
         if progress is not None:
-            progress(gi + 1, len(leaves))
+            progress(gi + 1, len(groups))
     return images
 
 

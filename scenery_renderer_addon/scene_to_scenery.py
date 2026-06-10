@@ -39,11 +39,6 @@ def _material_from_bpy(bmat) -> Material:
     if s is None:
         return m
 
-    # Visible mask overrides regular mask
-    if s.is_visible_mask:
-        m.flags &= ~MaterialFlag.IS_MASK
-        m.flags |= MaterialFlag.IS_VISIBLE_MASK
-
     # Wall-only classification.
     m.is_glass = bool(s.is_glass)
     if s.wall_side == "FRONT":
@@ -60,7 +55,14 @@ def _material_from_bpy(bmat) -> Material:
 
 
 def _extract(obj, depsgraph) -> Mesh | None:
-    return extract_mesh(obj, depsgraph, _material_from_bpy)
+    mesh = extract_mesh(obj, depsgraph, _material_from_bpy)
+    # A per-object "Ghost" toggle marks the whole mesh's geometry as ghost. Tag
+    # its materials so every render path (static, animated, walls, doors, large)
+    # splits these faces into a MeshFlag.GHOST model the renderer traces through.
+    if mesh is not None and obj.vgs_object.is_ghost:
+        for material in mesh.materials:
+            material.is_ghost = True
+    return mesh
 
 
 def _geometry_objects(scene) -> list:
@@ -347,6 +349,7 @@ def build_config_and_meshes(context):
             "requires_flat_surface": ss.requires_flat_surface,
             "prohibit_walls": ss.prohibit_walls,
             "is_tree": ss.is_tree,
+            "voffset_centre": ss.voffset_centre,
             "has_tertiary_colour": has_tertiary_colour,
         })
     elif ss.object_type == "scenery_wall":

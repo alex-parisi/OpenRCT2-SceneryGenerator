@@ -47,13 +47,14 @@ only Price / Cursor / Scenery Group; scenery groups hide the box entirely.
 
 | Control | Values / default | What it does |
 |---|---|---|
-| **Shape** | `1/4`, `2/4`, `3/4`, `4/4` *(default)*, `1/4+D`, `4/4+D` | Footprint: how many tile quadrants the object occupies. `+D` is a full-tile diagonal variant. |
+| **Shape** | `1/4`, `2/4`, `3/4`, `4/4` *(default)*, `1/4+D`, `4/4+D` | Footprint: how many tile quadrants the object occupies. `+D` is a full-tile diagonal variant. `2/4` (half-tile) objects paint from a tile-corner anchor with a real half-tile bounding box — model the piece in the **+X** half of the tile. |
 | **Height** | int, default `64`, min `0` | Clearance height in Z coordinate units (8 units per height step). Gameplay value, independent of the rendered sprite. |
 | **Rotatable** | on | Object has 4 rotations (renders 4 viewpoints) instead of 1. |
 | **Stackable** | off | Can be stacked / placed on top of other scenery. |
 | **Requires Flat Surface** | off | Only placeable on flat ground. |
 | **Prohibit Walls** | off | Blocks walls on the same tile. |
 | **Tree** | off | Flags the object as a tree (affects some gameplay rules). |
+| **Wide Bounding Box** | off | Paint with a near-full-tile bounding box (engine `VOFFSET_CENTRE` flag). Without it a full-tile object sorts from a tiny 2×2 box at the tile centre, which glitches the draw order of diagonal/wall-like pieces. Vanilla diagonal walls combine `4/4+D` + this + **Prohibit Walls** (which widens the box to the whole tile). |
 
 **Animation box** *(Type = Small Scenery)* — samples Blender keyframes into
 animation poses. All controls below the toggle appear only when **Animated** is on.
@@ -67,7 +68,11 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 | **Deformation** | Auto *(default)* / Bake all / Rigid only | How animated geometry is sampled. **Auto** bakes a fresh mesh per pose only for objects with an armature/deform modifier or animated shape keys and keeps the rest rigid; **Bake all** re-extracts every object's mesh each pose (one mesh per pose — use for deformation Auto misses); **Rigid only** animates transforms only (deformation frozen at rest). |
 | **Start Frame / End Frame** | `1` / `24` | Scene frame range to sample. If End ≤ Start the scene's own frame range is used. |
 
-**Wall box** *(Type = Wall)* — model the panel running along OBJ **+Z**.
+**Wall box** *(Type = Wall)* — model the panel running along OBJ **+Z**, with
+its **front face toward −X**. The front is what shows when the wall sits on the
+two far tile edges; a double-sided wall's Back faces show on the near edges.
+(As in vanilla RCT2, a single-sided wall re-uses its front sprites when viewed
+from behind, so it appears end-mirrored from those two rotations.)
 
 | Control | Default | What it does |
 |---|---|---|
@@ -77,7 +82,7 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 | **Double-Sided** | off | Distinct front/back faces (materials marked Front/Back via **Wall Side**); the rear block renders offset by +6. |
 | **Tertiary Colour** | off | Force a third placement colour. A **Remap 3** material enables it automatically. |
 | **Opaque** | off | Wall fully occludes the tile behind it (no see-through gaps). |
-| **Door** | off | Make the wall an animated door (peeps pass through). Keyframe the leaf swinging open over the **Start/End Frame** range; the renderer samples 5 poses and mirrors them for the backward swing (36-image door table). **Long Door Animation** and an optional **Door Sound** id are nested under it. Mutually exclusive with **Animated**. |
+| **Door** | off | Make the wall an animated door (peeps pass through). Keyframe the leaf swinging open over the **Start/End Frame** range; the renderer samples 5 poses and renders each from its per-direction viewpoint to fill the engine's fixed 36-image door table. **Long Door Animation** and an optional **Door Sound** id are nested under it. Mutually exclusive with **Animated**. |
 | **Animated** | off | Cycle a flat-only **8-frame** animation sampled from the scene keyframes over the **Start/End Frame** range. Greys out slope/glass/double-sided (they'd alias the frames) and is mutually exclusive with **Door**. |
 
 > Glass + double-sided isn't supported together — the UI warns and the
@@ -162,6 +167,7 @@ Shown for the selected mesh object.
 | Control | Values / default | What it does |
 |---|---|---|
 | **Role** | Geometry *(default)* / Ignore | Whether this object is part of the scenery model. **Ignore** excludes it from the render entirely (and hides the material controls below). |
+| **Ghost** | off | Render this object as ghost geometry: primary rays trace through it (so it is not drawn) while it still contributes to the silhouette and ambient occlusion of solid parts. Works on static, animated, wall, door, and large scenery. |
 
 **Materials box** — settings for the object's active material slot. With more
 than one slot, a slot list lets you pick which material to edit. These replace
@@ -173,7 +179,6 @@ the MTL material-*name* keyword rules used by the CLI path.
 | **Wall Side** / **Banner Layer** *(walls & banners)* | Both/Front *(default)* / Front Only / Back Only | For a double-sided wall: which side this face belongs to ("Both" is shared). For a banner: **Back** = rear pole, **Front**/**Both** = front pole + sign. |
 | **Region** | None *(default)* / Remap 1 (primary) / Remap 2 (secondary) / Remap 3 (tertiary) / Greyscale / Peep / Chain | How OpenRCT2 treats this material's pixels. The Remap regions are recoloured at runtime by the matching placement colour. |
 | **Mask** | off | Treat as a collision/visibility mask. |
-| **Visible Mask** | off | Mask that is also rendered. |
 | **No Ambient Occlusion** | off | Disable AO for this material. |
 | **Edge AA** | off | Enable background anti-aliasing blending on edges. |
 | **Dark Edge AA** | off | Dark-variant background AA blending. |

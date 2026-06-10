@@ -490,27 +490,6 @@ def test_door_render_blank_when_empty_and_progress():
     assert len(calls) == 9
 
 
-def test_mirror_wall_x_reflects_and_flips_winding():
-    from openrct2_scenery_generator.sprite_renderer import _mirror_wall_x
-
-    m = _empty_mesh()
-    # A non-empty mesh to exercise the winding flip + X negation.
-    import numpy as _np
-
-    mesh = Mesh(
-        vertices=_np.array([[1, 0, 0], [2, 0, 1], [1, 1, 0]], dtype=_np.float32),
-        normals=_np.array([[1, 0, 0]] * 3, dtype=_np.float32),
-        uvs=_np.zeros((3, 2), dtype=_np.float32),
-        faces=_np.array([[0, 1, 2]], dtype=_np.uint32),
-        face_materials=_np.zeros(1, dtype=_np.uint32),
-        materials=m.materials,
-    )
-    out = _mirror_wall_x(mesh)
-    assert out.vertices[1, 0] == -2.0  # X negated
-    assert out.normals[0, 0] == -1.0
-    assert list(out.faces[0]) == [2, 1, 0]  # winding reversed
-
-
 def test_door_leaf_face_mask_splits_moving_from_static():
     import numpy as _np
     from openrct2_scenery_generator.sprite_renderer import _door_leaf_face_mask
@@ -623,7 +602,7 @@ def test_large_render_order_and_count(tmp_path):
 from openrct2_scenery_generator.sprite_renderer import (  # noqa: E402
     _render_4_rotations,
     _render_wall_block,
-    _render_wall_pair,
+    _render_wall_view,
 )
 from openrct2_scenery_generator.types import SmallScenery  # noqa: E402
 from openrct2_x7_renderer.mesh import Material, Mesh  # noqa: E402
@@ -643,19 +622,34 @@ def _empty_mesh() -> Mesh:
 
 
 def test_render_wall_block_empty_mesh_returns_blanks_flat():
-    blanks = _render_wall_block(None, _empty_mesh(), slope=False)
+    blanks = _render_wall_block(None, _empty_mesh(), slope=False, views=(3, 0))
     assert len(blanks) == 2
     assert all(img.width == 1 for img in blanks)
 
 
 def test_render_wall_block_empty_mesh_returns_blanks_slope():
-    blanks = _render_wall_block(None, _empty_mesh(), slope=True)
+    blanks = _render_wall_block(None, _empty_mesh(), slope=True, views=(3, 0))
     assert len(blanks) == 6
 
 
-def test_render_wall_pair_uses_default_view_shift():
-    imgs = _render_wall_pair(_FakeContext(), _back_front_mesh())
-    assert len(imgs) == 2
+def test_render_wall_view_renders_each_cardinal_view():
+    imgs = [_render_wall_view(_FakeContext(), _back_front_mesh(), v, 3.3) for v in range(4)]
+    assert len(imgs) == 4
+
+
+def test_render_small_scenery_anchored_empty_mesh_and_progress():
+    from openrct2_scenery_generator.sprite_renderer import render_small_scenery_anchored
+
+    blanks = render_small_scenery_anchored(None, _empty_mesh(), anchor=3.0)
+    assert len(blanks) == 4
+    assert all(img.width == 1 for img in blanks)
+
+    calls: list[tuple[int, int]] = []
+    imgs = render_small_scenery_anchored(
+        _FakeContext(), _back_front_mesh(), 3.0, progress=lambda a, b: calls.append((a, b))
+    )
+    assert len(imgs) == 4
+    assert calls == [(1, 4), (2, 4), (3, 4), (4, 4)]
 
 
 def test_render_4_rotations_empty_mesh_returns_blanks():
