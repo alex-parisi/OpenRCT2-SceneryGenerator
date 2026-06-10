@@ -1,5 +1,7 @@
 # OpenRCT2 Scenery Generator
 
+<img src="doc/_static/scenery-generator.gif" width="400" alt="Preferences">
+
 A modern Blender add-on to author and export OpenRCT2 scenery objects (small scenery, large multi-tile scenery, and 
 walls) from 3D meshes. Geometry is ray-traced into the isometric sprite sheets OpenRCT2 expects and packaged as a 
 ready-to-install `.parkobj`.

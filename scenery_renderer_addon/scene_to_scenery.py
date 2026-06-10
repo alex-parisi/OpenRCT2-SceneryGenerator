@@ -43,8 +43,6 @@ def _material_from_bpy(bmat) -> Material:
     if s.is_visible_mask:
         m.flags &= ~MaterialFlag.IS_MASK
         m.flags |= MaterialFlag.IS_VISIBLE_MASK
-    if s.flat_shaded:
-        m.flags |= MaterialFlag.IS_FLAT_SHADED
 
     # Wall-only classification.
     m.is_glass = bool(s.is_glass)

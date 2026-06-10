@@ -147,7 +147,6 @@ class VGSMaterialSettings(PropertyGroup):
     edge: BoolProperty(name="Edge AA", default=False)
     dark_edge: BoolProperty(name="Dark Edge AA", default=False)
     no_bleed: BoolProperty(name="No Bleed", default=False)
-    flat_shaded: BoolProperty(name="Flat Shaded", default=False)
     texture: PointerProperty(
         name="Texture",
         description="Optional image; must be saved to disk (its file is read at export)",

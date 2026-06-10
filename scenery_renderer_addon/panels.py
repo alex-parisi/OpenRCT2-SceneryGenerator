@@ -291,7 +291,6 @@ def _draw_material_settings(layout, ms, object_type):
     col.prop(ms, "edge")
     col.prop(ms, "dark_edge")
     col.prop(ms, "no_bleed")
-    col.prop(ms, "flat_shaded")
     layout.prop(ms, "texture")
 
     col = layout.column(align=True)
