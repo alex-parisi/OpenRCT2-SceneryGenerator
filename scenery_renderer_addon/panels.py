@@ -225,6 +225,8 @@ def _draw_placement(layout, ss):
     box.prop(ss, "scenery_group")
     box.prop(ss, "has_primary_colour")
     box.prop(ss, "has_secondary_colour")
+    if ot == "scenery_small":
+        box.prop(ss, "has_tertiary_colour")
 
 
 def _draw_group(layout, ss):

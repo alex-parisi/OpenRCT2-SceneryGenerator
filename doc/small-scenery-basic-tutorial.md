@@ -53,6 +53,8 @@ First, select the toilet object.
 
 You'll see a panel below the `OpenRCT2 Scenery` panel called `Selected Object`. Here is where you can change the material settings for the underlying X7 renderer.
 
+*Note:* the `Flat Shaded` option was vestigial and has since been removed, so ignore that setting.
+
 It is important to remember that while Blender is used to design scenery objects, it is **NOT** used for rendering. The add-on provides all mesh data to the X7 renderer which gives us that classic ray-traced look.
 
 The X7 renderer's material system is also isolated from the material system in Blender. This panel is where you can control the available material settings of the X7 renderer.
@@ -109,11 +111,46 @@ Looking much better! But it could be made even better by adjusting the material 
 
 Some good notes to keep in mind:
 
-- Pure white and pure black are hard to render as much detail is lost due to the render scale and the basic material system currently supported by the X7 renderer.
+- Pure white and pure black are hard to render as much detail is lost due to the render scale and the basic material system currently supported by the X7 renderer. For white, try a darker shade, and for black, try a lighter shade.
+- At this rendering scale, the specular exponent and intensity only affect small details, but playing with them can improve your results. It's more important to get the color and shading right.
 
-### 6. Fix Specular Settings
+### 6. Export and Try In-Game
 
-The default specular exponent is rather
+Before exporting, I changed the color of each material to a slightly darker shade of white, `#BEBEBE`. I also enabled `Edge AA` for the toilet seat material `aiStandardSurface1SG` to give it a bit more definition against the base.
+
+Press the `Export .parkobj` button, and then save the file to a known location. Then move this file into your OpenRCT2 objects folder.
+
+- On macOS, this will be `~/Library/Application\ Support/OpenRCT2/object`
+
+Launch the game, and it should be available as an option in the Object Selection menu.
+
+I recommend having a scenario with every object enabled, so this way you can create a new 
+game, immediately open the Object Selection menu, and see _only_ the new scenery object you added.
+
+
+<img src="_static/toilet-in-game.png" width="670" alt="">
+
+
+### 7. (Optional) Assign Remap Regions
+
+Back in Blender, in the `Selected Object` panel, you can also assign a Remap region to a material. This will render the sprites with sprite groups that OpenRCT2 will replace with recolorable regions.
+
+Remap1 maps to the first recoloring drop-down picker, Remap2 to the second, and Remap3 to the third.
+
+The `Ai_Ceramic:Ai_CeramicSG` material corresponds to the toilet body, so we'll assign that `Remap1`. The `aiStandardSurface1SG` material correspond to the toilet seat, so we'll assign that `Remap2`. 
+
+Press the `Test Render` button again, and your preview should look like this:
+
+
+<img src="_static/blender-test-render-3.png" width="552" alt="">
+
+
+These wacky colors are what signals to OpenRCT2 to redraw them in custom colors. Export the `.parkobj` again, re-install it to OpenRCT2, and re-launch.
+
+You should then be able to select the color of the toilet base and the toilet seat:
+
+
+<img src="_static/toilet-in-game-recolored.png" width="596" alt="">
 
 --- 
 

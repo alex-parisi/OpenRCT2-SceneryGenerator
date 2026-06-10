@@ -179,6 +179,7 @@ def build_small_scenery(
     obj.is_tree = optional_bool(root, "is_tree", False)
     obj.has_primary_colour = optional_bool(root, "has_primary_colour", False)
     obj.has_secondary_colour = optional_bool(root, "has_secondary_colour", False)
+    obj.has_tertiary_colour = optional_bool(root, "has_tertiary_colour", False)
 
     obj.meshes = list(meshes)
     anim = root.get("animation")

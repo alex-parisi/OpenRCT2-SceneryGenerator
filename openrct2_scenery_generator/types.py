@@ -52,6 +52,7 @@ class SmallScenery:
     # Color remap
     has_primary_colour: bool = False
     has_secondary_colour: bool = False
+    has_tertiary_colour: bool = False
 
     # Frame animation
     is_animated: bool = False

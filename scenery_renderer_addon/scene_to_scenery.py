@@ -310,6 +310,15 @@ def build_config_and_meshes(context):
 
     authors = [a.strip() for a in ss.authors.split(",") if a.strip()]
 
+    # Tagging a material Remap1/2/3 must imply the matching placement colour:
+    # otherwise OpenRCT2 shows no colour picker and renders the remap palette
+    # windows as their raw default colours. The explicit toggles still force the
+    # flag on even when no remap material is present.
+    used_regions = {mat.region for mesh in meshes for mat in mesh.materials}
+    has_primary_colour = ss.has_primary_colour or 1 in used_regions
+    has_secondary_colour = ss.has_secondary_colour or 2 in used_regions
+    has_tertiary_colour = ss.has_tertiary_colour or 3 in used_regions
+
     config: dict = {
         "object_type": ss.object_type,
         "id": ss.id,
@@ -321,8 +330,8 @@ def build_config_and_meshes(context):
         "removal_price": ss.removal_price,
         "cursor": ss.cursor,
         "scenery_group": ss.scenery_group,
-        "has_primary_colour": ss.has_primary_colour,
-        "has_secondary_colour": ss.has_secondary_colour,
+        "has_primary_colour": has_primary_colour,
+        "has_secondary_colour": has_secondary_colour,
     }
     if animation is not None:
         config["animation"] = animation
@@ -338,6 +347,7 @@ def build_config_and_meshes(context):
             "requires_flat_surface": ss.requires_flat_surface,
             "prohibit_walls": ss.prohibit_walls,
             "is_tree": ss.is_tree,
+            "has_tertiary_colour": has_tertiary_colour,
         })
     elif ss.object_type == "scenery_wall":
         # A door takes the door paint path; otherwise isAnimated drives the
@@ -345,7 +355,7 @@ def build_config_and_meshes(context):
         wall_animation = ss.is_animated and not ss.is_door
         wall_cfg: dict = {
             "height": int(ss.wall_height),
-            "has_tertiary_colour": ss.has_tertiary_colour,
+            "has_tertiary_colour": has_tertiary_colour,
             "is_allowed_on_slope": (not wall_animation) and ss.is_allowed_on_slope,
             "has_glass": (not wall_animation) and ss.has_glass,
             "is_double_sided": (not wall_animation) and ss.is_double_sided,
@@ -375,7 +385,7 @@ def build_config_and_meshes(context):
                 "Large scenery needs at least one tile. Add one in the Tiles list."
             )
         config.update({
-            "has_tertiary_colour": ss.has_tertiary_colour,
+            "has_tertiary_colour": has_tertiary_colour,
             "is_photogenic": ss.is_photogenic,
             "scrolling_mode": int(ss.scrolling_mode),
             "tiles": [_tile_config(t) for t in ss.tiles],

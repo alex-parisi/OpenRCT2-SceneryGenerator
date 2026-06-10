@@ -39,8 +39,9 @@ only Price / Cursor / Scenery Group; scenery groups hide the box entirely.
 | **Removal Price** | `1.0` | Refund/cost to remove. |
 | **Cursor** | Statue Down | Mouse cursor shown while placing. Closed dropdown of the `CURSOR_*` ids OpenRCT2 accepts. |
 | **Scenery Group** | *(empty)* | Optional scenery-group object id this belongs to. |
-| **Primary Colour** | off | Make the object recolourable with a primary colour; pairs with **Remap 1** materials. |
-| **Secondary Colour** | off | Adds a second placement colour; pairs with **Remap 2** materials. |
+| **Primary Colour** | off | Force a primary placement colour. Tagging any material **Remap 1** enables this automatically; the toggle only matters to force it on without a Remap 1 material. |
+| **Secondary Colour** | off | Force a secondary placement colour. A **Remap 2** material enables it automatically. |
+| **Tertiary Colour** | off | *(Small Scenery only, in this box)* Force a third placement colour. A **Remap 3** material enables it automatically. |
 
 **Small Scenery box** *(Type = Small Scenery)*
 
@@ -74,7 +75,7 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 | **Allowed on Slope** | on | Placeable on sloped terrain; adds the 4 slope sprites. |
 | **Has Glass** | off | Wall has translucent glass panes; materials marked **Glass** are split into a separate overlay block. |
 | **Double-Sided** | off | Distinct front/back faces (materials marked Front/Back via **Wall Side**); the rear block renders offset by +6. |
-| **Tertiary Colour** | off | Adds a third placement colour; pairs with **Remap 3** materials. |
+| **Tertiary Colour** | off | Force a third placement colour. A **Remap 3** material enables it automatically. |
 | **Opaque** | off | Wall fully occludes the tile behind it (no see-through gaps). |
 | **Door** | off | Make the wall an animated door (peeps pass through). Keyframe the leaf swinging open over the **Start/End Frame** range; the renderer samples 5 poses and mirrors them for the backward swing (36-image door table). **Long Door Animation** and an optional **Door Sound** id are nested under it. Mutually exclusive with **Animated**. |
 | **Animated** | off | Cycle a flat-only **8-frame** animation sampled from the scene keyframes over the **Start/End Frame** range. Greys out slope/glass/double-sided (they'd alias the frames) and is mutually exclusive with **Door**. |
@@ -89,7 +90,7 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 
 | Control | Values / default | What it does |
 |---|---|---|
-| **Tertiary Colour** | off | Adds a third placement colour; pairs with **Remap 3** materials. |
+| **Tertiary Colour** | off | Force a third placement colour. A **Remap 3** material enables it automatically. |
 | **Photogenic** | off | Marks the object as a good photo subject (peeps take photos of it). |
 | **Scrolling Mode** | int, default `255`, range `0–255` | `255` = no scrolling text. Only set a real mode for scrolling signs (mode 0 is a *valid, active* mode, so leave it at 255 otherwise). |
 | **Tiles** | list | The multi-tile footprint. Use **＋ / －** to add/remove tiles; each tile exposes **X**, **Y** (tile *indices* along OBJ +X / +Z), **Z** (height offset, coordinate units) and **Clearance** (vertical clearance, coordinate units, default `40`). At least one tile is required. |
@@ -105,7 +106,8 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 
 Tag the sign material **Back** (rear pole) or **Front** (front pole + sign) via
 the per-material **Banner Layer** picker; untagged faces fall into the front
-layer. **Primary Colour** recolours a **Remap 1** sign.
+layer. A **Remap 1** sign material is recoloured by the primary placement colour
+(enabling **Primary Colour** automatically).
 
 **Path Addition box** *(Type = Path Addition)* — model the item centred on the
 tile origin; the engine places it on open path edges.

@@ -70,6 +70,7 @@ def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
         "isTree": obj.is_tree,
         "hasPrimaryColour": obj.has_primary_colour,
         "hasSecondaryColour": obj.has_secondary_colour,
+        "hasTertiaryColour": obj.has_tertiary_colour,
     }
     if obj.is_animated:
         properties["isAnimated"] = True

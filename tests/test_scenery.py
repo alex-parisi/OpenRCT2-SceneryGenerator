@@ -93,6 +93,16 @@ def test_build_json_shape(tmp_path):
     assert j["strings"]["name"]["en-GB"] == "Test"
 
 
+def test_build_json_tertiary_colour(tmp_path):
+    obj = _make_scenery(tmp_path, has_tertiary_colour=True)
+    props = build_small_scenery_json(obj)["properties"]
+    assert props["hasTertiaryColour"] is True
+
+    obj = _make_scenery(tmp_path)
+    props = build_small_scenery_json(obj)["properties"]
+    assert props["hasTertiaryColour"] is False
+
+
 def test_rotatable_defaults_true(tmp_path):
     obj = _make_scenery(tmp_path)
     assert obj.num_rotations == 4
