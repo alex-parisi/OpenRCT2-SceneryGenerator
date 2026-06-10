@@ -1,7 +1,7 @@
-# OpenRCT2 Scenery Generator Tutorial
+# OpenRCT2 Scenery Generator Tutorials
 
 - [Small Scenery](small-scenery-basic-tutorial.md) (basic)
-- [Small Scenery]() (advanced)
+- [Small Scenery](small-scenery-advanced-tutorial.md) (advanced)
 - [Animated Small Scenery]() (basic)
 - [Animated Small Scenery]() (advanced)
 - [Large Scenery]()

@@ -19,7 +19,7 @@ Rendering is handled by the external [`openrct2-x7-renderer`](https://pypi.org/p
 
 1. Download the latest version of the Blender add-on [here](https://github.com/alex-parisi/OpenRCT2-SceneryGenerator/releases/latest)
 2. Install the add-on into Blender. If you are not sure how, follow [these instructions](doc/blender-plugin-installation.md)
-3. Follow the tutorial [here]()
+3. Follow the tutorials [here](doc/scenery-generator-plugin-tutorial.md)
 
 ## Documentation
 
