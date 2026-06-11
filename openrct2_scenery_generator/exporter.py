@@ -542,8 +542,15 @@ def build_path_addition_json(obj: PathAddition) -> dict[str, Any]:
     if draw_flag is not None:
         properties[draw_flag] = True
 
+    breakable = obj.is_breakable
+    if breakable and not obj.needs_broken:
+        log.warning(
+            "%s path additions carry no broken sprites; ignoring isBreakable", obj.render_as
+        )
+        breakable = False
+
     for key, val in (
-        ("isBreakable", obj.is_breakable),
+        ("isBreakable", breakable),
         ("isJumpingFountainWater", obj.is_jumping_fountain_water),
         ("isJumpingFountainSnow", obj.is_jumping_fountain_snow),
         ("isTelevision", obj.is_television),

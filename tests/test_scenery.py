@@ -416,6 +416,16 @@ def test_animated_wall_render_count(tmp_path):
     assert count_wall_sprites(is_double_sided=True) == 12
 
 
+def test_wall_num_sprites_covers_animated_and_door():
+    from openrct2_scenery_generator.types import WallScenery
+
+    assert WallScenery(is_animated=True).num_sprites == 16
+    assert WallScenery(is_door=True).num_sprites == 36
+    # A door's fixed image table wins over the other capability flags.
+    assert WallScenery(is_door=True, has_glass=True).num_sprites == 36
+    assert WallScenery(is_animated=True, is_allowed_on_slope=True).num_sprites == 16
+
+
 def _make_door(tmp_path, frames=5, **overrides):
     (tmp_path / "dr.obj").write_text("v 0 0 0\nv 0 0 1\nv 0 1 0\nf 1 2 3\n")
     from openrct2_x7_renderer.mesh import load_mesh

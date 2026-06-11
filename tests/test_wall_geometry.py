@@ -39,25 +39,44 @@ def _panel(materials=None, faces=None, face_materials=None):
     )
 
 
+def _full_tile_panel(upt=2.0):
+    """A panel spanning the whole tile edge: z in [-upt/2, +upt/2]."""
+    p = _panel()
+    p.vertices[:, 2] = p.vertices[:, 2] * upt - upt / 2.0
+    return p
+
+
 def test_shear_up_raises_far_end_only():
-    out = _shear_wall(_panel(), sign=+1.0, rise=2.0)
+    out = _shear_wall(_full_tile_panel(), sign=+1.0, rise=2.0, units_per_tile=2.0)
     v = out.vertices
-    near = v[v[:, 2] == 0.0]
+    near = v[v[:, 2] == -1.0]
     far = v[v[:, 2] == 1.0]
-    assert np.allclose(near[:, 1], [0.0, 1.0])
+    assert np.allclose(np.sort(near[:, 1]), [0.0, 1.0])
     assert np.allclose(np.sort(far[:, 1]), [2.0, 3.0])
 
 
 def test_shear_down_lowers_far_end():
-    out = _shear_wall(_panel(), sign=-1.0, rise=2.0)
+    out = _shear_wall(_full_tile_panel(), sign=-1.0, rise=2.0, units_per_tile=2.0)
     far = out.vertices[out.vertices[:, 2] == 1.0]
     assert np.allclose(np.sort(far[:, 1]), [-2.0, -1.0])
 
 
 def test_shear_y_raise_lifts_whole_panel():
-    out = _shear_wall(_panel(), sign=-1.0, rise=2.0, y_raise=5.0)
-    near = out.vertices[out.vertices[:, 2] == 0.0]
+    out = _shear_wall(_full_tile_panel(), sign=-1.0, rise=2.0, y_raise=5.0, units_per_tile=2.0)
+    near = out.vertices[out.vertices[:, 2] == -1.0]
     assert np.allclose(np.sort(near[:, 1]), [5.0, 6.0])
+
+
+def test_shear_partial_panel_rises_by_tile_fraction():
+    # The ramp follows the tile span, not the panel's own extent: a panel
+    # covering only the +Z half of the tile starts half a step up and reaches
+    # the full rise at the tile edge.
+    out = _shear_wall(_panel(), sign=+1.0, rise=2.0, units_per_tile=2.0)
+    v = out.vertices
+    centre = v[v[:, 2] == 0.0]
+    edge = v[v[:, 2] == 1.0]
+    assert np.allclose(np.sort(centre[:, 1]), [1.0, 2.0])
+    assert np.allclose(np.sort(edge[:, 1]), [2.0, 3.0])
 
 
 def test_shear_preserves_topology_and_x():
@@ -69,7 +88,7 @@ def test_shear_preserves_topology_and_x():
     assert np.allclose(out.vertices[:, 2], panel.vertices[:, 2])
 
 
-def test_shear_degenerate_zero_span_does_not_divide_by_zero():
+def test_shear_degenerate_flat_panel_stays_finite():
     flat = _panel()
     flat.vertices[:, 2] = 0.0
     out = _shear_wall(flat, sign=+1.0, rise=2.0)

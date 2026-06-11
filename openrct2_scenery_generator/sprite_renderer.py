@@ -232,15 +232,19 @@ def _render_wall_view(
 
 
 def _shear_wall(
-    combined: Mesh, sign: float, rise: float = _WALL_SLOPE_RISE, y_raise: float = 0.0
+    combined: Mesh,
+    sign: float,
+    rise: float = _WALL_SLOPE_RISE,
+    y_raise: float = 0.0,
+    units_per_tile: float = TILE_SIZE,
 ) -> Mesh:
-    """Ramp the panel's Y along its length (Z), raising the +Z end by
-    `sign * rise` so it follows a sloped edge."""
+    """Ramp the panel's Y along the tile edge (Z), raising the tile's +Z end by
+    `sign * rise` so it follows a sloped edge. The ramp is a function of
+    position across the tile span [-upt/2, +upt/2] (not the panel's own
+    extent), so a panel shorter than the tile edge rises only by its share of
+    the slope."""
     v = combined.vertices.astype(np.float64).copy()
-    z = v[:, 2]
-    z_min, z_max = float(z.min()), float(z.max())
-    span = (z_max - z_min) or 1.0
-    t = (z - z_min) / span
+    t = v[:, 2] / units_per_tile + 0.5
     v[:, 1] += sign * rise * t + y_raise
     return Mesh(
         vertices=v.astype(np.float32),
@@ -327,8 +331,8 @@ def _render_wall_block(
 
     images = [render(mesh, va), render(mesh, vb)]
     if slope:
-        up = _shear_wall(mesh, +1.0, rise)
-        down = _shear_wall(mesh, -1.0, rise, y_raise=down_raise)
+        up = _shear_wall(mesh, +1.0, rise, units_per_tile=units_per_tile)
+        down = _shear_wall(mesh, -1.0, rise, y_raise=down_raise, units_per_tile=units_per_tile)
         if views == _WALL_FRONT_VIEWS:
             images += [render(down, va), render(up, vb), render(up, va), render(down, vb)]
         else:

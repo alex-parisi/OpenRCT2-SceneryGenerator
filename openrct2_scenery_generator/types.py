@@ -17,9 +17,11 @@ if TYPE_CHECKING:
 from .constants import (
     DEFAULT_CURSOR,
     DEFAULT_HEIGHT,
+    DOOR_NUM_IMAGES,
     PATH_ADDITION_DEFAULT_CURSOR,
     SCENERY_GROUP_DEFAULT_PRIORITY,
     SCROLLING_MODE_NONE,
+    WALL_ANIMATION_FRAMES,
     WALL_DEFAULT_CURSOR,
 )
 
@@ -275,6 +277,10 @@ class WallScenery:
     @property
     def num_sprites(self) -> int:
         """Sprite count by capability"""
+        if self.is_door:
+            return DOOR_NUM_IMAGES
+        if self.is_animated:
+            return WALL_ANIMATION_FRAMES * 2
         if self.has_glass or self.is_double_sided:
             return 12
         return 6 if self.is_allowed_on_slope else 2

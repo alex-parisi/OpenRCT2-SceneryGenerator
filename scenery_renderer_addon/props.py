@@ -374,7 +374,14 @@ class VGSScenerySettings(PropertyGroup):
         description="First scene frame to sample (uses scene range if end <= start)",
         default=1,
     )
-    anim_end_frame: IntProperty(name="End Frame", default=24)
+    anim_end_frame: IntProperty(
+        name="End Frame",
+        description=(
+            "Last scene frame to sample. For Loop playback this is the last "
+            "frame before the cycle repeats (the seam pose is not duplicated)"
+        ),
+        default=24,
+    )
     animation_deform: EnumProperty(
         name="Deformation",
         description="How animated geometry is sampled (rigid transform vs. "

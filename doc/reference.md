@@ -66,7 +66,7 @@ animation poses. All controls below the toggle appear only when **Animated** is 
 | **Playback** | Loop *(default)* / Ping-Pong | Loop replays 0…N-1 then jumps to 0; Ping-Pong plays forward then back (smooth for swings/pendulums). |
 | **Speed (delay)** | int, default `1`, range `0–15` | Tick bit-shift: higher = slower playback. |
 | **Deformation** | Auto *(default)* / Bake all / Rigid only | How animated geometry is sampled. **Auto** bakes a fresh mesh per pose only for objects with an armature/deform modifier or animated shape keys and keeps the rest rigid; **Bake all** re-extracts every object's mesh each pose (one mesh per pose — use for deformation Auto misses); **Rigid only** animates transforms only (deformation frozen at rest). |
-| **Start Frame / End Frame** | `1` / `24` | Scene frame range to sample. If End ≤ Start the scene's own frame range is used. |
+| **Start Frame / End Frame** | `1` / `24` | Scene frame range to sample. If End ≤ Start the scene's own frame range is used. With **Loop** the range is one full cycle — End is the last frame *before* the loop repeats — so poses are spaced evenly around the loop without duplicating the seam; with **Ping-Pong** both ends are sampled as the turning points. |
 
 **Wall box** *(Type = Wall)* — model the panel running along OBJ **+Z**, with
 its **front face toward −X**. The front is what shows when the wall sits on the
@@ -156,7 +156,6 @@ Lighting** to override it with your own list.
 
 | Control | What it does |
 |---|---|
-| **Preview Image** | Path to a preview image embedded in the object. |
 | **Test Render** | Renders one viewpoint quickly and loads the sprite into an open Image Editor. Fast iteration; no `.parkobj` written. |
 | **Export .parkobj** | Renders every sprite and writes a ready-to-install `.parkobj` (opens a file picker; defaults the name from **Object ID**). Both buttons run the renderer off the main thread with a status-bar spinner. |
 
@@ -183,7 +182,6 @@ the MTL material-*name* keyword rules used by the CLI path.
 | **Edge AA** | off | Enable background anti-aliasing blending on edges. |
 | **Dark Edge AA** | off | Dark-variant background AA blending. |
 | **No Bleed** | off | Disable colour bleed from neighbouring pixels. |
-| **Flat Shaded** | off | Use flat (per-face) shading instead of smooth normals. |
 | **Texture** | *(none)* | Optional image. Must be saved to disk — its file is read at export time. |
 
 **Shading** (sub-section of the Materials box) — Phong controls.

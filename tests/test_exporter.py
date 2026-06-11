@@ -559,6 +559,16 @@ def test_build_path_addition_json_flags(tmp_path):
     assert "isAllowedOnQueue" not in props
 
 
+def test_build_path_addition_json_drops_breakable_fountain(tmp_path, caplog):
+    from openrct2_scenery_generator.exporter import build_path_addition_json
+
+    obj = _item(tmp_path, render_as="fountain", is_breakable=True)
+    with caplog.at_level("WARNING"):
+        props = build_path_addition_json(obj)["properties"]
+    assert "isBreakable" not in props
+    assert "no broken sprites" in caplog.text
+
+
 def test_build_path_addition_json_includes_scenery_group(tmp_path):
     from openrct2_scenery_generator.exporter import build_path_addition_json
 

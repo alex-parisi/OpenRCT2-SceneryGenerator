@@ -86,6 +86,10 @@ class VGS_PT_scenery(Panel):
                 row.prop(ss, "anim_start_frame")
                 row.prop(ss, "anim_end_frame")
                 abox.label(text="Keyframe the geometry over this range.", icon="INFO")
+                if ss.animation_loop == "LOOP":
+                    abox.label(
+                        text="End = last frame before the loop repeats.", icon="INFO"
+                    )
                 if ss.animation_deform != "NEVER":
                     abox.label(
                         text="Deforming objects: one mesh baked per pose.",
