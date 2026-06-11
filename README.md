@@ -4,7 +4,8 @@
 
 A modern Blender add-on to author and export OpenRCT2 scenery objects (small scenery, large multi-tile scenery, and 
 walls) from 3D meshes. Geometry is ray-traced into the isometric sprite sheets OpenRCT2 expects and packaged as a 
-ready-to-install `.parkobj`.
+ready-to-install `.parkobj`. Batch export lets you author a whole set of objects (e.g. fence variants sharing one set 
+of materials) in a single scene — one Collection per object — and export every `.parkobj` at once.
 
 Rendering is handled by the external [`openrct2-x7-renderer`](https://pypi.org/project/openrct2-x7-renderer/) package
 (an Embree-backed ray tracer shipping prebuilt, vendored wheels).

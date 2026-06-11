@@ -9,6 +9,7 @@ import os
 import tempfile
 
 import bpy
+from mathutils import Vector
 from openrct2_object_common.blender.mesh_extract import (
     BASIS,
     SceneError,
@@ -65,13 +66,23 @@ def _extract(obj, depsgraph) -> Mesh | None:
     return mesh
 
 
-def _geometry_objects(scene) -> list:
-    """Scene mesh objects that are part of the model (role != IGNORE)."""
+def _geometry_objects(objects) -> list:
+    """Mesh objects that are part of the model (role != IGNORE)."""
     return [
         obj
-        for obj in scene.objects
+        for obj in objects
         if obj.type == "MESH" and obj.vgs_object.role != "IGNORE"
     ]
+
+
+def _offset_positions(entries: list[dict], offset) -> None:
+    """Subtract an OBJ-space ``offset`` from every model/pose entry's position,
+    compensating for a collection moved aside in the viewport so the object
+    still renders centred."""
+    ox, oy, oz = offset
+    for entry in entries:
+        p = entry["position"]
+        entry["position"] = [p[0] - ox, p[1] - oy, p[2] - oz]
 
 
 # Modifiers that animate an object's *vertices* (not just its transform) over
@@ -243,13 +254,32 @@ def _sample_animation_poses(
 
 
 
-def build_config_and_meshes(context):
-    """Return (config_dict, meshes) read from the active scene."""
+def build_config_and_meshes(
+    context,
+    *,
+    ss=None,
+    objects=None,
+    offset=(0.0, 0.0, 0.0),
+    shared=None,
+):
+    """Return (config_dict, meshes) read from the scene.
+
+    By default the whole scene exports as one object configured by
+    ``scene.vgs_scenery``. A batch entry passes its own ``ss`` (the entry's
+    nested settings), ``objects`` (its collection's objects), and ``offset``
+    (the Blender-space translation the collection was moved by, subtracted
+    back out so the object renders centred). ``shared`` supplies the
+    batch-shared fields — authors, version, units-per-tile, scenery group —
+    and defaults to ``ss``.
+    """
     scene = context.scene
-    ss = scene.vgs_scenery
+    if ss is None:
+        ss = scene.vgs_scenery
+    if shared is None:
+        shared = ss
     depsgraph = context.evaluated_depsgraph_get()
 
-    geo_objs = _geometry_objects(scene)
+    geo_objs = _geometry_objects(scene.objects if objects is None else objects)
     # A wall is a door OR animated, never both
     small_animated = ss.object_type == "scenery_small" and ss.is_animated
     wall_door = ss.object_type == "scenery_wall" and ss.is_door
@@ -322,7 +352,15 @@ def build_config_and_meshes(context):
             "in the OpenRCT2 Scenery panel."
         )
 
-    authors = [a.strip() for a in ss.authors.split(",") if a.strip()]
+    if any(offset):
+        off = BASIS @ Vector(tuple(offset))
+        obj_offset = (float(off.x), float(off.y), float(off.z))
+        _offset_positions(model, obj_offset)
+        if animation is not None:
+            for pose in animation["frames"]:
+                _offset_positions(pose, obj_offset)
+
+    authors = [a.strip() for a in shared.authors.split(",") if a.strip()]
 
     # Tagging a material Remap1/2/3 must imply the matching placement colour:
     # otherwise OpenRCT2 shows no colour picker and renders the remap palette
@@ -338,12 +376,12 @@ def build_config_and_meshes(context):
         "id": ss.id,
         "name": ss.name,
         "authors": authors,
-        "version": ss.version,
-        "units_per_tile": float(ss.units_per_tile),
+        "version": shared.version,
+        "units_per_tile": float(shared.units_per_tile),
         "price": ss.price,
         "removal_price": ss.removal_price,
         "cursor": ss.cursor,
-        "scenery_group": ss.scenery_group,
+        "scenery_group": shared.scenery_group,
         "has_primary_colour": has_primary_colour,
         "has_secondary_colour": has_secondary_colour,
     }
@@ -366,14 +404,16 @@ def build_config_and_meshes(context):
         })
     elif ss.object_type == "scenery_wall":
         # A door takes the door paint path; otherwise isAnimated drives the
-        # flat-only frame cycle
+        # flat-only frame cycle. Slope/glass/double-sided only exist for plain
+        # flat walls.
         wall_animation = ss.is_animated and not ss.is_door
+        plain_wall = not (wall_animation or ss.is_door)
         wall_cfg: dict = {
             "height": int(ss.wall_height),
             "has_tertiary_colour": has_tertiary_colour,
-            "is_allowed_on_slope": (not wall_animation) and ss.is_allowed_on_slope,
-            "has_glass": (not wall_animation) and ss.has_glass,
-            "is_double_sided": (not wall_animation) and ss.is_double_sided,
+            "is_allowed_on_slope": plain_wall and ss.is_allowed_on_slope,
+            "has_glass": plain_wall and ss.has_glass,
+            "is_double_sided": plain_wall and ss.is_double_sided,
             "is_opaque": ss.is_opaque,
             "is_animated": wall_animation,
             "is_door": ss.is_door,
@@ -438,16 +478,16 @@ def _group_preview(ss):
     draw origin, or None when no icon is set."""
     if ss.icon is None:
         return None
-    tmpdir = tempfile.mkdtemp(prefix="vgs_icon_")
-    path = os.path.join(tmpdir, "icon.png")
-    img = ss.icon.copy()
-    try:
-        img.file_format = "PNG"
-        img.filepath_raw = path
-        img.save()
-        icon = quantize_to_indexed(path, size=_GROUP_ICON_SIZE)
-    finally:
-        bpy.data.images.remove(img)
+    with tempfile.TemporaryDirectory(prefix="vgs_icon_") as tmpdir:
+        path = os.path.join(tmpdir, "icon.png")
+        img = ss.icon.copy()
+        try:
+            img.file_format = "PNG"
+            img.filepath_raw = path
+            img.save()
+            icon = quantize_to_indexed(path, size=_GROUP_ICON_SIZE)
+        finally:
+            bpy.data.images.remove(img)
     return IndexedImage(
         width=icon.width,
         height=icon.height,
@@ -457,17 +497,26 @@ def _group_preview(ss):
     )
 
 
-def build_group(context):
-    """Build a SceneryGroup (tab) from the scene settings."""
-    ss = context.scene.vgs_scenery
-    authors = [a.strip() for a in ss.authors.split(",") if a.strip()]
-    entries = [e.object_id.strip() for e in ss.entries if e.object_id.strip()]
+def build_group(context, *, ss=None, shared=None, auto_entries=()):
+    """Build a SceneryGroup (tab) from the scene (or a batch entry's) settings.
+
+    ``shared`` supplies the batch-shared authors/version and defaults to ``ss``.
+    ``auto_entries`` are member ids prepended to the manual list (batch mode's
+    "Include All Batch Objects"); duplicates are dropped, order preserved.
+    """
+    if ss is None:
+        ss = context.scene.vgs_scenery
+    if shared is None:
+        shared = ss
+    authors = [a.strip() for a in shared.authors.split(",") if a.strip()]
+    manual = [e.object_id.strip() for e in ss.entries if e.object_id.strip()]
+    entries = list(dict.fromkeys([*auto_entries, *manual]))
     config = {
         "object_type": "scenery_group",
         "id": ss.id,
         "name": ss.name,
         "authors": authors,
-        "version": ss.version,
+        "version": shared.version,
         "priority": int(ss.priority),
         "entries": entries,
     }

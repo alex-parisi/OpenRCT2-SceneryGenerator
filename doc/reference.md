@@ -159,6 +159,49 @@ Lighting** to override it with your own list.
 | **Test Render** | Renders one viewpoint quickly and loads the sprite into an open Image Editor. Fast iteration; no `.parkobj` written. |
 | **Export .parkobj** | Renders every sprite and writes a ready-to-install `.parkobj` (opens a file picker; defaults the name from **Object ID**). Both buttons run the renderer off the main thread with a status-bar spinner. |
 
+### Batch export (multiple objects per scene)
+
+Toggle **Batch Export** at the top of the OpenRCT2 Scenery panel to author
+several scenery objects in one .blend — e.g. a fence set in different heights —
+sharing one set of materials. Each batch entry pairs a Blender **Collection**
+(the entry's meshes) with its own full settings; **Export All** writes one
+`<Object ID>.parkobj` per entry into a folder you pick.
+
+The rule of thumb: **identity and type settings belong to each object; scale,
+authors, version, scenery group, and lighting are shared across the batch**
+(drawn in the *Shared Across Batch* box).
+
+Workflow:
+
+1. Put each object's meshes in their own Collection, moved apart in the
+   viewport so they don't overlap. One object may be linked into several
+   Collections — handy for parts every variant shares (e.g. a fence post).
+2. Enable **Batch Export** and add an entry per Collection. A new entry copies
+   its settings from the selected entry (or from the single-object settings for
+   the first one), so shared values are entered once.
+3. Set each entry's **Collection Offset** to the translation you moved that
+   Collection by; it is subtracted at export so the object renders centred.
+   **Set from 3D Cursor** fills it from the cursor position.
+4. Edit the selected entry's id, name, and type settings in the
+   *Selected Object* box (the same controls as single-object mode).
+5. Optionally add a **Scenery Group** entry (no Collection needed) and turn on
+   **Include All Batch Objects** — the group's member list is filled with the
+   other entries' ids at export, giving the set its own scenery tab.
+6. **Test Render (Selected)** / **Export Selected** iterate on one entry;
+   **Export All** renders every entry into the chosen folder.
+
+| Control | Values / default | What it does |
+|---|---|---|
+| **Batch Export** | off | Switches the panel into batch mode. Off, everything behaves exactly as before (the whole scene is one object). |
+| **(list) ＋ / −** | — | Add / remove a batch object. The row shows the entry's label and its object type. |
+| **Collection** | *(none)* | The Blender Collection holding this object's meshes (nested collections included). Objects outside every listed Collection are not exported. Scenery Group entries need no Collection. |
+| **Collection Offset** | `(0, 0, 0)` | Blender-space translation the Collection was moved by; subtracted back out at export. |
+| **Include All Batch Objects** | off | *(Scenery Group entries only)* Auto-fills the group's members with every other batch object's id at export, so the batch ships with its own tab. The manual list below then adds extra members (e.g. ids from other files); duplicates are dropped. |
+| **Export All** | — | Validates every entry (assigned Collection, unique non-empty Object IDs) and builds them all *before* rendering starts, then writes one `.parkobj` per entry with per-object progress in the status bar. |
+
+Object **Role** / **Ghost** and all per-material settings work unchanged; in
+batch mode the material panel follows the selected entry's object type.
+
 ### Panel: Selected Object → Scenery (per-object)
 
 Shown for the selected mesh object.
