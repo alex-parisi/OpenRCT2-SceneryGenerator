@@ -39,11 +39,6 @@ def _material_from_bpy(bmat) -> Material:
     if s is None:
         return m
 
-    # Visible mask overrides regular mask
-    if s.is_visible_mask:
-        m.flags &= ~MaterialFlag.IS_MASK
-        m.flags |= MaterialFlag.IS_VISIBLE_MASK
-
     # Wall-only classification.
     m.is_glass = bool(s.is_glass)
     if s.wall_side == "FRONT":
@@ -60,7 +55,14 @@ def _material_from_bpy(bmat) -> Material:
 
 
 def _extract(obj, depsgraph) -> Mesh | None:
-    return extract_mesh(obj, depsgraph, _material_from_bpy)
+    mesh = extract_mesh(obj, depsgraph, _material_from_bpy)
+    # A per-object "Ghost" toggle marks the whole mesh's geometry as ghost. Tag
+    # its materials so every render path (static, animated, walls, doors, large)
+    # splits these faces into a MeshFlag.GHOST model the renderer traces through.
+    if mesh is not None and obj.vgs_object.is_ghost:
+        for material in mesh.materials:
+            material.is_ghost = True
+    return mesh
 
 
 def _geometry_objects(scene) -> list:
@@ -119,10 +121,17 @@ def _frame_offsets(cycle: int, loop: str) -> tuple[list[int], int]:
 
 
 def _sample_animation_poses(
-    geo_objs, scene, num_poses: int, f_start: int, f_end: int, deforms=None
+    geo_objs, scene, num_poses: int, f_start: int, f_end: int, deforms=None,
+    *, cyclic: bool = False,
 ):
     """Sample every geometry object across num_poses evenly-spaced scene
     frames.
+
+    With `cyclic`, the range is one loop period — `f_end` is the last frame
+    *before* the cycle repeats — so poses are spaced end-exclusively across
+    `f_end - f_start + 1` frames and the seam pose is never duplicated.
+    Without it (ping-pong, doors) both endpoints are sampled as the extreme
+    poses.
 
     Two per-object sampling modes, chosen by `deforms(obj)` (default: none):
 
@@ -139,6 +148,9 @@ def _sample_animation_poses(
         f_start, f_end = scene.frame_start, scene.frame_end
     if num_poses <= 1 or f_end <= f_start:
         frames = [f_start] * max(num_poses, 1)
+    elif cyclic:
+        period = f_end - f_start + 1
+        frames = [f_start + round(i * period / num_poses) for i in range(num_poses)]
     else:
         frames = [
             f_start + round(i * (f_end - f_start) / (num_poses - 1))
@@ -258,6 +270,7 @@ def build_config_and_meshes(context):
             int(ss.anim_start_frame),
             int(ss.anim_end_frame),
             _make_deform_predicate(ss.animation_deform),
+            cyclic=ss.animation_loop == "LOOP",
         )
         animation = {
             "delay": int(ss.animation_delay),
@@ -287,6 +300,7 @@ def build_config_and_meshes(context):
             int(ss.anim_start_frame),
             int(ss.anim_end_frame),
             _make_deform_predicate(ss.animation_deform),
+            cyclic=True,
         )
         animation = {"frames": poses}
     else:
@@ -347,6 +361,7 @@ def build_config_and_meshes(context):
             "requires_flat_surface": ss.requires_flat_surface,
             "prohibit_walls": ss.prohibit_walls,
             "is_tree": ss.is_tree,
+            "voffset_centre": ss.voffset_centre,
             "has_tertiary_colour": has_tertiary_colour,
         })
     elif ss.object_type == "scenery_wall":

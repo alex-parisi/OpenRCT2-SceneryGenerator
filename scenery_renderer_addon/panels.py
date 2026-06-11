@@ -73,6 +73,7 @@ class VGS_PT_scenery(Panel):
             col.prop(ss, "requires_flat_surface")
             col.prop(ss, "prohibit_walls")
             col.prop(ss, "is_tree")
+            col.prop(ss, "voffset_centre")
 
             abox = layout.box()
             abox.prop(ss, "is_animated", icon="ANIM")
@@ -85,6 +86,10 @@ class VGS_PT_scenery(Panel):
                 row.prop(ss, "anim_start_frame")
                 row.prop(ss, "anim_end_frame")
                 abox.label(text="Keyframe the geometry over this range.", icon="INFO")
+                if ss.animation_loop == "LOOP":
+                    abox.label(
+                        text="End = last frame before the loop repeats.", icon="INFO"
+                    )
                 if ss.animation_deform != "NEVER":
                     abox.label(
                         text="Deforming objects: one mesh baked per pose.",
@@ -288,7 +293,6 @@ def _draw_material_settings(layout, ms, object_type):
     layout.prop(ms, "region")
     col = layout.column(align=True)
     col.prop(ms, "is_mask")
-    col.prop(ms, "is_visible_mask")
     col.prop(ms, "no_ao")
     col.prop(ms, "edge")
     col.prop(ms, "dark_edge")
@@ -317,6 +321,8 @@ def _draw_object_settings(layout, obj, object_type):
     layout.prop(obj.vgs_object, "role")
     if obj.vgs_object.role == "IGNORE":
         return
+
+    layout.prop(obj.vgs_object, "is_ghost")
 
     box = layout.box()
     box.label(text="Materials", icon="MATERIAL")

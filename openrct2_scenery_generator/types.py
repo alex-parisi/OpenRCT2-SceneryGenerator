@@ -17,9 +17,11 @@ if TYPE_CHECKING:
 from .constants import (
     DEFAULT_CURSOR,
     DEFAULT_HEIGHT,
+    DOOR_NUM_IMAGES,
     PATH_ADDITION_DEFAULT_CURSOR,
     SCENERY_GROUP_DEFAULT_PRIORITY,
     SCROLLING_MODE_NONE,
+    WALL_ANIMATION_FRAMES,
     WALL_DEFAULT_CURSOR,
 )
 
@@ -48,6 +50,10 @@ class SmallScenery:
     requires_flat_surface: bool = False
     prohibit_walls: bool = False
     is_tree: bool = False
+    # Engine VOFFSET_CENTRE: paint with a near-full-tile bounding box (and a
+    # tile-corner anchor). Vanilla sets this on diagonal walls and other
+    # wall-like full-tile pieces so they sort correctly.
+    voffset_centre: bool = False
 
     # Color remap
     has_primary_colour: bool = False
@@ -271,6 +277,10 @@ class WallScenery:
     @property
     def num_sprites(self) -> int:
         """Sprite count by capability"""
+        if self.is_door:
+            return DOOR_NUM_IMAGES
+        if self.is_animated:
+            return WALL_ANIMATION_FRAMES * 2
         if self.has_glass or self.is_double_sided:
             return 12
         return 6 if self.is_allowed_on_slope else 2

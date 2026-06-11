@@ -177,6 +177,7 @@ def build_small_scenery(
     obj.requires_flat_surface = optional_bool(root, "requires_flat_surface", False)
     obj.prohibit_walls = optional_bool(root, "prohibit_walls", False)
     obj.is_tree = optional_bool(root, "is_tree", False)
+    obj.voffset_centre = optional_bool(root, "voffset_centre", False)
     obj.has_primary_colour = optional_bool(root, "has_primary_colour", False)
     obj.has_secondary_colour = optional_bool(root, "has_secondary_colour", False)
     obj.has_tertiary_colour = optional_bool(root, "has_tertiary_colour", False)

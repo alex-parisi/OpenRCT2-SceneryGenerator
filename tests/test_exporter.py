@@ -129,6 +129,46 @@ def test_export_small_scenery_to_non_rotatable_single_sprite(tmp_path):
     assert j["images"] == ["$LGX:images.dat[0..0]"]
 
 
+def test_export_small_scenery_to_half_tile_uses_anchored_path(tmp_path):
+    # "2/4" objects paint from the {3,3} anchor, so each rotation renders in
+    # its own translated scene rather than one shared scene.
+    obj = _small(tmp_path, shape="2/4")
+    ctx = FakeContext()
+    export_small_scenery_to(obj, ctx, tmp_path / "h.parkobj", tmp_path / "w")
+    with zipfile.ZipFile(tmp_path / "h.parkobj") as zf:
+        j = json.loads(zf.read("object.json"))
+    assert j["images"] == ["$LGX:images.dat[0..3]"]
+    assert sum(1 for e in ctx.events if e == "begin") == 4
+
+
+def test_export_small_scenery_voffset_centre_flag_and_anchor(tmp_path):
+    obj = _small(tmp_path, shape="4/4+D", voffset_centre=True, prohibit_walls=True)
+    ctx = FakeContext()
+    export_small_scenery_to(obj, ctx, tmp_path / "d.parkobj", tmp_path / "w")
+    with zipfile.ZipFile(tmp_path / "d.parkobj") as zf:
+        j = json.loads(zf.read("object.json"))
+    assert j["properties"]["SMALL_SCENERY_FLAG_VOFFSET_CENTRE"] is True
+    assert j["properties"]["prohibitWalls"] is True
+    assert sum(1 for e in ctx.events if e == "begin") == 4
+
+
+def test_export_small_scenery_test_half_tile_writes_rotation_pngs(tmp_path):
+    obj = _small(tmp_path, shape="2/4")
+    test_dir = tmp_path / "test"
+    export_small_scenery_test(obj, FakeContext(), test_dir)
+    for i in range(4):
+        assert (test_dir / f"scenery_{i}.png").exists()
+    assert (test_dir / "preview_combined.png").exists()
+
+
+def test_export_small_scenery_animated_half_tile_anchors_each_direction(tmp_path):
+    obj = _animated(tmp_path, poses=3, shape="2/4")
+    test_dir = tmp_path / "test"
+    export_small_scenery_test(obj, FakeContext(), test_dir)
+    for d in range(4):
+        assert (test_dir / f"base_{d}.png").exists()
+
+
 def test_export_small_scenery_to_animated_emits_group_block(tmp_path):
     obj = _animated(tmp_path, poses=3)
     export_small_scenery_to(obj, FakeContext(), tmp_path / "a.parkobj", tmp_path / "w")
@@ -517,6 +557,16 @@ def test_build_path_addition_json_flags(tmp_path):
     assert props["isBreakable"] is True
     assert props["isAllowedOnSlope"] is True
     assert "isAllowedOnQueue" not in props
+
+
+def test_build_path_addition_json_drops_breakable_fountain(tmp_path, caplog):
+    from openrct2_scenery_generator.exporter import build_path_addition_json
+
+    obj = _item(tmp_path, render_as="fountain", is_breakable=True)
+    with caplog.at_level("WARNING"):
+        props = build_path_addition_json(obj)["properties"]
+    assert "isBreakable" not in props
+    assert "no broken sprites" in caplog.text
 
 
 def test_build_path_addition_json_includes_scenery_group(tmp_path):
