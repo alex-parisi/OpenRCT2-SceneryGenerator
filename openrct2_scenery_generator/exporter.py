@@ -469,8 +469,10 @@ def build_banner_json(obj: Banner) -> dict[str, Any]:
     properties: dict[str, Any] = {"price": obj.price}
     if obj.has_primary_colour:
         properties["hasPrimaryColour"] = True
-    if obj.scrolling_mode != SCROLLING_MODE_NONE:
-        properties["scrollingMode"] = obj.scrolling_mode
+    # Unlike walls/large scenery, the engine defaults a banner's missing
+    # scrollingMode to 0 (an active scroll mode), so it must always be written
+    # for 255 ("none") to actually disable the scrolling text.
+    properties["scrollingMode"] = obj.scrolling_mode
     if obj.scenery_group:
         properties["sceneryGroup"] = obj.scenery_group
     out["properties"] = properties

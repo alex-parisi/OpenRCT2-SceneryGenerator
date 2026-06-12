@@ -452,10 +452,22 @@ def render_wall_door(
     sampled = [
         combine_model_world(meshes, model, frame=f) for f in range(DOOR_SAMPLE_FRAMES)
     ]
-    leaf_mask = _door_leaf_face_mask(sampled[0], sampled[-1])
-    frame_mesh = _submesh(sampled[0], ~leaf_mask)
-    closed_leaf = _submesh(sampled[0], leaf_mask)
-    swing_leaves = [_submesh(m, leaf_mask) for m in sampled[1:DOOR_SAMPLE_FRAMES]]
+    if all(
+        m.vertices.shape == sampled[0].vertices.shape
+        and m.faces.shape == sampled[0].faces.shape
+        for m in sampled[1:]
+    ):
+        leaf_mask = _door_leaf_face_mask(sampled[0], sampled[-1])
+        frame_mesh = _submesh(sampled[0], ~leaf_mask)
+        closed_leaf = _submesh(sampled[0], leaf_mask)
+        swing_leaves = [_submesh(m, leaf_mask) for m in sampled[1:DOOR_SAMPLE_FRAMES]]
+    else:
+        # Topology changes between poses (per-pose re-extracted deforming
+        # meshes), so the vertex-motion leaf/frame split is undefined: treat
+        # each whole pose as the swinging leaf with an empty static frame.
+        frame_mesh = _submesh(sampled[0], np.zeros(sampled[0].faces.shape[0], dtype=bool))
+        closed_leaf = sampled[0]
+        swing_leaves = sampled[1:DOOR_SAMPLE_FRAMES]
 
     frame_imgs = {view: render(frame_mesh, view) for view in range(4)}
 

@@ -75,7 +75,11 @@ class SmallScenery:
 
     @property
     def num_rotations(self) -> int:
-        return 4 if self.is_rotatable else 1
+        """Always 4: the engine paints image + direction unconditionally and
+        gives non-rotatable objects a random direction at placement, so a
+        sprite must exist for every direction. isRotatable only controls the
+        in-game rotate button."""
+        return 4
 
     @property
     def num_pose_groups(self) -> int:

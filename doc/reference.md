@@ -49,7 +49,7 @@ only Price / Cursor / Scenery Group; scenery groups hide the box entirely.
 |---|---|---|
 | **Shape** | `1/4`, `2/4`, `3/4`, `4/4` *(default)*, `1/4+D`, `4/4+D` | Footprint: how many tile quadrants the object occupies. `+D` is a full-tile diagonal variant. `2/4` (half-tile) objects paint from a tile-corner anchor with a real half-tile bounding box — model the piece in the **+X** half of the tile. |
 | **Height** | int, default `64`, min `0` | Clearance height in Z coordinate units (8 units per height step). Gameplay value, independent of the rendered sprite. |
-| **Rotatable** | on | Object has 4 rotations (renders 4 viewpoints) instead of 1. |
+| **Rotatable** | on | Lets the player rotate the object while placing it. Off, the game places it at a random rotation instead (4 viewpoints are always rendered either way). |
 | **Stackable** | off | Can be stacked / placed on top of other scenery. |
 | **Requires Flat Surface** | off | Only placeable on flat ground. |
 | **Prohibit Walls** | off | Blocks walls on the same tile. |

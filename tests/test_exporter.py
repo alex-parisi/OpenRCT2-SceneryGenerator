@@ -121,12 +121,15 @@ def test_export_small_scenery_to_writes_parkobj(tmp_path):
     assert (work / "images.dat").exists()
 
 
-def test_export_small_scenery_to_non_rotatable_single_sprite(tmp_path):
+def test_export_small_scenery_to_non_rotatable_still_four_sprites(tmp_path):
+    # The engine indexes image + direction even for non-rotatable objects (and
+    # places them at a random direction), so all 4 sprites must be emitted.
     obj = _small(tmp_path, is_rotatable=False)
     export_small_scenery_to(obj, FakeContext(), tmp_path / "s.parkobj", tmp_path / "w")
     with zipfile.ZipFile(tmp_path / "s.parkobj") as zf:
         j = json.loads(zf.read("object.json"))
-    assert j["images"] == ["$LGX:images.dat[0..0]"]
+    assert j["images"] == ["$LGX:images.dat[0..3]"]
+    assert j["properties"]["isRotatable"] is False
 
 
 def test_export_small_scenery_to_half_tile_uses_anchored_path(tmp_path):
@@ -508,7 +511,9 @@ def test_build_banner_json_omits_unset(tmp_path):
 
     j = build_banner_json(_banner(tmp_path))
     assert "hasPrimaryColour" not in j["properties"]
-    assert "scrollingMode" not in j["properties"]
+    # The engine defaults a banner's missing scrollingMode to 0 (an active
+    # scroll mode), so "none" must be written out explicitly as 255.
+    assert j["properties"]["scrollingMode"] == 255
 
 
 def test_build_banner_json_includes_scenery_group(tmp_path):
