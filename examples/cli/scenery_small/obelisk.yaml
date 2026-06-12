@@ -6,7 +6,7 @@ version: "1.0"
 output_directory: .
 
 meshes:
-  - examples/cli/scenery_small/obelisk.obj
+  - obelisk.obj
 
 model:
   - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}

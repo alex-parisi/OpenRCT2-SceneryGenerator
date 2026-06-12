@@ -191,10 +191,17 @@ def build_small_scenery(
     return obj
 
 
+def _config_dir(json_path: Path | str) -> Path:
+    """The directory containing the config file; relative `meshes` / `preview`
+    paths resolve against it (with a CWD fallback for older configs)."""
+    return Path(json_path).parent
+
+
 def load_small_scenery(json_path: Path | str) -> SmallScenery:
     """Parse a config file, load its meshes + preview, build a SmallScenery."""
     root = parse_config(json_path)
-    return build_small_scenery(root, load_meshes(root), load_preview(root))
+    base = _config_dir(json_path)
+    return build_small_scenery(root, load_meshes(root, base), load_preview(root, base))
 
 
 def _load_tiles(value: Any) -> list[LargeSceneryTile]:
@@ -245,7 +252,8 @@ def build_large_scenery(
 
 def load_large_scenery(json_path: Path | str) -> LargeScenery:
     root = parse_config(json_path)
-    return build_large_scenery(root, load_meshes(root), load_preview(root))
+    base = _config_dir(json_path)
+    return build_large_scenery(root, load_meshes(root, base), load_preview(root, base))
 
 
 def build_wall_scenery(
@@ -314,7 +322,8 @@ def _load_wall_pose_model(anim: Any, num_meshes: int, want_poses: int, kind: str
 
 def load_wall_scenery(json_path: Path | str) -> WallScenery:
     root = parse_config(json_path)
-    return build_wall_scenery(root, load_meshes(root), load_preview(root))
+    base = _config_dir(json_path)
+    return build_wall_scenery(root, load_meshes(root, base), load_preview(root, base))
 
 
 def build_banner(
@@ -337,18 +346,25 @@ def build_banner(
 
 def load_banner(json_path: Path | str) -> Banner:
     root = parse_config(json_path)
-    return build_banner(root, load_meshes(root), load_preview(root))
+    base = _config_dir(json_path)
+    return build_banner(root, load_meshes(root, base), load_preview(root, base))
 
 
-def _load_meshes_for(root: dict[str, Any], key: str) -> list[Mesh]:
+def _load_meshes_for(root: dict[str, Any], key: str, base_dir: Path | None = None) -> list[Mesh]:
     """Load the OBJ set listed under an alternate config key."""
-    return load_meshes({"meshes": root[key]})
+    return load_meshes({"meshes": root[key]}, base_dir)
 
 
 def build_path_addition(
-    config: dict[str, Any], meshes: list[Mesh], preview: IndexedImage | None = None
+    config: dict[str, Any],
+    meshes: list[Mesh],
+    preview: IndexedImage | None = None,
+    base_dir: Path | None = None,
 ) -> PathAddition:
-    """Build a PathAddition from a parsed config dict + in-memory meshes."""
+    """Build a PathAddition from a parsed config dict + in-memory meshes.
+
+    `base_dir` resolves the relative `broken_meshes` / `full_meshes` paths the
+    config may reference (the main meshes are already loaded by the caller)."""
     root = config
     obj = PathAddition()
     _load_header(obj, root, preview, PATH_ADDITION_DEFAULT_CURSOR)
@@ -371,17 +387,20 @@ def build_path_addition(
     obj.model = _load_model(root.get("model"), len(obj.meshes))
 
     if root.get("broken_meshes") is not None:
-        obj.broken_meshes = _load_meshes_for(root, "broken_meshes")
+        obj.broken_meshes = _load_meshes_for(root, "broken_meshes", base_dir)
         obj.broken_model = _load_model(root.get("broken_model"), len(obj.broken_meshes))
     if root.get("full_meshes") is not None:
-        obj.full_meshes = _load_meshes_for(root, "full_meshes")
+        obj.full_meshes = _load_meshes_for(root, "full_meshes", base_dir)
         obj.full_model = _load_model(root.get("full_model"), len(obj.full_meshes))
     return obj
 
 
 def load_path_addition(json_path: Path | str) -> PathAddition:
     root = parse_config(json_path)
-    return build_path_addition(root, load_meshes(root), load_preview(root))
+    base = _config_dir(json_path)
+    return build_path_addition(
+        root, load_meshes(root, base), load_preview(root, base), base_dir=base
+    )
 
 
 def build_scenery_group(
@@ -399,7 +418,7 @@ def build_scenery_group(
 
 def load_scenery_group(json_path: Path | str) -> SceneryGroup:
     root = parse_config(json_path)
-    return build_scenery_group(root, load_preview(root))
+    return build_scenery_group(root, load_preview(root, _config_dir(json_path)))
 
 
 def object_type_of(config: dict[str, Any]) -> str:

@@ -303,6 +303,40 @@ def test_load_small_scenery_from_file(tmp_path, monkeypatch):
     assert obj.id == "rct2.t"
 
 
+def test_load_small_scenery_resolves_meshes_against_config_dir(tmp_path, monkeypatch):
+    # Config + mesh live together; the loader must find them no matter the CWD.
+    config_dir = tmp_path / "assets"
+    config_dir.mkdir()
+    _write_tri_obj(config_dir)
+    cfg = {
+        "id": "rct2.t", "name": "T",
+        "meshes": ["m.obj"],
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+    }
+    (config_dir / "small.json").write_text(json.dumps(cfg))
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    obj = load_small_scenery(config_dir / "small.json")
+    assert len(obj.meshes) == 1
+
+
+def test_load_small_scenery_falls_back_to_cwd_meshes(tmp_path, monkeypatch):
+    # An older config with CWD-relative mesh paths still loads from the CWD.
+    config_dir = tmp_path / "configs"
+    config_dir.mkdir()
+    cfg = {
+        "id": "rct2.t", "name": "T",
+        "meshes": ["m.obj"],
+        "model": [{"mesh_index": 0, "position": [0, 0, 0]}],
+    }
+    (config_dir / "small.json").write_text(json.dumps(cfg))
+    _write_tri_obj(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    obj = load_small_scenery(config_dir / "small.json")
+    assert len(obj.meshes) == 1
+
+
 def test_load_large_scenery_from_file(tmp_path, monkeypatch):
     _write_tri_obj(tmp_path)
     cfg = {
@@ -424,6 +458,29 @@ def test_path_addition_loads_optional_broken_full_meshes(tmp_path, monkeypatch):
     assert len(obj.full_meshes) == 1
 
 
+def test_path_addition_broken_full_meshes_resolve_against_config_dir(tmp_path, monkeypatch):
+    config_dir = tmp_path / "assets"
+    config_dir.mkdir()
+    _write_tri_obj(config_dir)
+    cfg = _item_config(
+        render_as="bin",
+        meshes=["m.obj"],
+        broken_meshes=["m.obj"],
+        broken_model=[{"mesh_index": 0, "position": [0, 0, 0]}],
+        full_meshes=["m.obj"],
+        full_model=[{"mesh_index": 0, "position": [0, 0, 0]}],
+    )
+    (config_dir / "item.json").write_text(json.dumps(cfg))
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    from openrct2_scenery_generator.loader import load_path_addition
+
+    obj = load_path_addition(config_dir / "item.json")
+    assert len(obj.broken_meshes) == 1
+    assert len(obj.full_meshes) == 1
+
+
 def test_scenery_group_loads_entries_without_meshes():
     obj = build_scenery_group(
         {
@@ -448,3 +505,25 @@ def test_load_scenery_group_from_file(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     obj = load_scenery_group(tmp_path / "group.json")
     assert obj.entries == ["a.b.c"]
+
+
+def test_load_scenery_group_preview_resolves_against_config_dir(tmp_path, monkeypatch):
+    from openrct2_x7_renderer.image import write_png
+    from openrct2_x7_renderer.types import IndexedImage
+
+    config_dir = tmp_path / "assets"
+    config_dir.mkdir()
+    write_png(IndexedImage.blank(4, 4), config_dir / "icon.png")
+    cfg = {
+        "id": "openrct2sg.scenery_group.t",
+        "name": "G",
+        "object_type": "scenery_group",
+        "preview": "icon.png",
+    }
+    (config_dir / "group.json").write_text(json.dumps(cfg))
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    obj = load_scenery_group(config_dir / "group.json")
+    assert obj.preview is not None
+    assert obj.preview.width == 4

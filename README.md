@@ -36,8 +36,11 @@ openrct2-scenery-generator [--test|--skip-render] <input.json|.yaml>
   (no `.parkobj` produced).
 - `--skip-render`: emit `object.json` / packaging without re-rendering sprites.
 
-The config format is JSON or YAML (chosen by file extension). The top-level
-`object_type` field selects the path:
+The config format is JSON or YAML (chosen by file extension). Relative
+`meshes` / `broken_meshes` / `full_meshes` / `preview` paths resolve against
+the config file's directory (falling back to the current working directory for
+older configs), so a config and its assets can live together and be run from
+anywhere. The top-level `object_type` field selects the path:
 
 | `object_type`     | Output                  |
 |-------------------|-------------------------|

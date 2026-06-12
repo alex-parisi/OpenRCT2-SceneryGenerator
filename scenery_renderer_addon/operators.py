@@ -4,6 +4,7 @@ and tile/light list management.
 """
 
 import os
+import shutil
 import tempfile
 import time
 
@@ -184,6 +185,12 @@ class _SceneryModalBase(RenderModalBase):
         self._lights = lights_from_items(context.scene.vgs_scenery.lights)
 
 
+# The previous test render's output directory. Its PNG must outlive the
+# operator (the Image Editor reads it from disk), so it is only removed when
+# the next test render replaces it.
+_last_test_dir: str | None = None
+
+
 class VGS_OT_test_render(_SceneryModalBase):
     bl_idname = "vgs.test_render"
     bl_label = "Test Render"
@@ -192,8 +199,12 @@ class VGS_OT_test_render(_SceneryModalBase):
     _status_verb = "Rendering test"
 
     def _prepare(self, context, payload) -> None:
+        global _last_test_dir
         super()._prepare(context, payload)
+        if _last_test_dir is not None:
+            shutil.rmtree(_last_test_dir, ignore_errors=True)
         self._tmp = tempfile.mkdtemp(prefix="vgs_test_")
+        _last_test_dir = self._tmp
         self._png = None
 
     def _render(self, payload) -> None:
@@ -244,7 +255,10 @@ class VGS_OT_export_parkobj(_SceneryModalBase):
     def _render(self, payload) -> None:
         kind, obj = payload
         ctx = make_context(self._lights, obj.units_per_tile, False)
-        _EXPORTERS[kind][0](obj, ctx, self._parkobj, self._work, progress=self.set_progress)
+        try:
+            _EXPORTERS[kind][0](obj, ctx, self._parkobj, self._work, progress=self.set_progress)
+        finally:
+            shutil.rmtree(self._work, ignore_errors=True)
 
     def _on_success(self, context):
         elapsed = int(time.monotonic() - self._start_time)
@@ -307,7 +321,10 @@ class VGS_OT_export_batch(_SceneryModalBase):
         for i, (kind, obj, filename) in enumerate(payloads):
             ctx = make_context(self._lights, obj.units_per_tile, False)
             work = tempfile.mkdtemp(prefix="vgs_export_")
-            _EXPORTERS[kind][0](obj, ctx, os.path.join(self._dir, filename), work)
+            try:
+                _EXPORTERS[kind][0](obj, ctx, os.path.join(self._dir, filename), work)
+            finally:
+                shutil.rmtree(work, ignore_errors=True)
             self.set_progress(i + 1, total)
 
     def _on_success(self, context):

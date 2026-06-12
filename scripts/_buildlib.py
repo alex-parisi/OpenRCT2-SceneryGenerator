@@ -16,7 +16,7 @@ ADDONS = {"scenery": "scenery_renderer_addon"}
 # the bundled wheels must satisfy what the frontend wheel declares.
 RENDERER_DIST = "openrct2-x7-renderer"
 RENDERER_PREFIX = "openrct2_x7_renderer"
-RENDERER_VERSION = "0.3.4"
+RENDERER_VERSION = "0.3.5"
 
 OBJECTCOMMON_DIST = "OpenRCT2-ObjectCommon"
 OBJECTCOMMON_PREFIX = "openrct2_objectcommon"

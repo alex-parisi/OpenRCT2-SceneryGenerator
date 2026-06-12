@@ -9,7 +9,7 @@ output_directory: .
 render_as: lamp
 
 meshes:
-  - examples/cli/footpath_item/lamp.obj
+  - lamp.obj
 
 model:
   - {mesh_index: 0, position: [0, 0, 0], orientation: [0, 0, 0]}

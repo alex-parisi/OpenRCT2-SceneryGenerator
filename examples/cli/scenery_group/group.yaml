@@ -8,7 +8,7 @@ output_directory: .
 
 # The tab icon (a provided PNG). The engine draws image+1, so the exporter emits
 # two icon slots from this single image.
-preview: examples/cli/scenery_group/icon.png
+preview: icon.png
 
 priority: 40
 
