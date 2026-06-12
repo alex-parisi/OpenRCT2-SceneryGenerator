@@ -94,7 +94,9 @@ def render_small_scenery(
 # view-space point {15,15} (~tile centre); a half-tile ("2/4") sprite at {3,3};
 # a VOFFSET_CENTRE sprite at {3,3}, or {1,1} when prohibitWalls is also set.
 # Sprites for the non-centre anchors must be rendered against that anchor or
-# they land up to 13 px away from their tile.
+# they land up to 13 px away from their tile. Quarter-tile ("1/4") shapes take
+# the engine's quadrant paint path instead, where VOFFSET_CENTRE only affects
+# support heights, so they keep the default anchor.
 def small_scenery_paint_anchor(
     shape: str, voffset_centre: bool, prohibit_walls: bool
 ) -> float | None:
@@ -102,7 +104,7 @@ def small_scenery_paint_anchor(
     scenery object, or None for the default tile-centre render path."""
     if shape.startswith("2/4"):
         return 3.0
-    if voffset_centre:
+    if voffset_centre and not shape.startswith("1/4"):
         return 1.0 if prohibit_walls else 3.0
     return None
 
@@ -503,6 +505,12 @@ def _render_4_rotations(
         corners = _CORNER_BY_DIR
     if mesh.faces.shape[0] == 0:
         return [IndexedImage.blank(1, 1) for _ in range(4)]
+    if len(set(corners)) == 1:
+        # Every direction shares one anchor (e.g. path additions), so one
+        # finalized scene serves all 4 views.
+        ox, oz = corners[0]
+        translation = np.array([-(cx + ox), 0.0, -(cz + oz)], dtype=np.float64)
+        return _render_scene_views(context, mesh, translation, [VIEWS[d] for d in range(4)])
     out: list[IndexedImage] = []
     for d in range(4):
         ox, oz = corners[d]
@@ -626,13 +634,13 @@ def render_path_addition(
     def edge_sprites(mesh: Mesh) -> list[IndexedImage]:
         return _render_4_rotations(context, mesh, 0.0, 0.0, _PATH_ADDITION_CORNERS)
 
+    normal_edges = edge_sprites(normal)
     if normal.faces.shape[0] == 0:
         images = [IndexedImage.blank(1, 1)]
     else:
-        preview = _render_scene_view(context, normal, np.zeros(3, dtype=np.float64), VIEWS[0])
-        images = [_center_in_button(preview, _PATH_ADDITION_PREVIEW_DRAW)]
-
-    normal_edges = edge_sprites(normal)
+        # The menu preview is the direction-0 edge render, re-anchored to
+        # centre in the scenery-window button.
+        images = [_center_in_button(normal_edges[0], _PATH_ADDITION_PREVIEW_DRAW)]
     images.extend(normal_edges)
     if progress is not None:
         progress(1, 3)

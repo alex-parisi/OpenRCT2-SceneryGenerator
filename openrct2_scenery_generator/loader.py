@@ -271,6 +271,13 @@ def build_wall_scenery(
     ds = root.get("door_sound")
     if ds is not None:
         obj.door_sound = optional_int(root, "door_sound", 0)
+        # The engine packs doorSound into a 2-bit field and indexes a
+        # 3-entry sound table (0 = none, 1 = door, 2 = portcullis).
+        if not 0 <= obj.door_sound <= 2:
+            raise LoadError(
+                f'Property "door_sound" must be 0-2 (0 = none, 1 = door, '
+                f"2 = portcullis), got {obj.door_sound}"
+            )
 
     obj.meshes = list(meshes)
 

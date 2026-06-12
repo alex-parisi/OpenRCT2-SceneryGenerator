@@ -164,12 +164,23 @@ def test_door_json_drops_allowed_on_slope(tri_mesh, caplog):
 
 def test_wall_json_emits_door_sound_and_scrolling(tri_mesh):
     obj = build_wall_scenery(
-        _wall_config(door_sound=3, scrolling_mode=2, is_door=True, animation=_door_frames()),
+        _wall_config(door_sound=2, scrolling_mode=2, is_door=True, animation=_door_frames()),
         [tri_mesh],
     )
     props = build_wall_scenery_json(obj)["properties"]
-    assert props["doorSound"] == 3
+    assert props["doorSound"] == 2
     assert props["scrollingMode"] == 2
+
+
+@pytest.mark.parametrize("bad", [-1, 3, 7])
+def test_wall_door_sound_out_of_range_rejected(tri_mesh, bad):
+    # The engine packs doorSound into 2 bits and indexes a 3-entry sound
+    # table (none/door/portcullis), so anything outside 0-2 is invalid.
+    with pytest.raises(LoadError, match="door_sound"):
+        build_wall_scenery(
+            _wall_config(door_sound=bad, is_door=True, animation=_door_frames()),
+            [tri_mesh],
+        )
 
 
 def test_large_json_negates_and_scales_tile_coords(tri_mesh):

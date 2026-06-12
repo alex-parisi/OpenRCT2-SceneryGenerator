@@ -448,9 +448,13 @@ class VGSScenerySettings(PropertyGroup):
     )
     door_sound: IntProperty(
         name="Door Sound",
-        description="OpenRCT2 door sound id played when the door opens",
+        description=(
+            "OpenRCT2 door sound played when the door opens "
+            "(0 = none, 1 = door, 2 = portcullis)"
+        ),
         default=1,
         min=0,
+        max=2,
     )
 
     # Path addition

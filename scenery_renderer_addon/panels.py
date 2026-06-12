@@ -248,7 +248,8 @@ def _draw_placement(layout, ss, *, batch=False):
         return
     row = box.row(align=True)
     row.prop(ss, "price")
-    row.prop(ss, "removal_price")
+    if ot != "scenery_wall":  # walls have no removal price in the engine
+        row.prop(ss, "removal_price")
     box.prop(ss, "cursor")
     if not batch:
         box.prop(ss, "scenery_group")

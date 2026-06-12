@@ -30,8 +30,9 @@ configs](#example-configs)); the UI is just a front-end for the same build.
 | **Version** | `1.0` | Object version string. |
 
 **Placement box** — gameplay/placement behaviour. The fields shown adapt to the
-type: banners drop Removal Price / Cursor / Secondary Colour; path additions show
-only Price / Cursor / Scenery Group; scenery groups hide the box entirely.
+type: banners drop Removal Price / Cursor / Secondary Colour; walls drop Removal
+Price (the engine has none for walls); path additions show only Price / Cursor /
+Scenery Group; scenery groups hide the box entirely.
 
 | Control | Default | What it does |
 |---|---|---|

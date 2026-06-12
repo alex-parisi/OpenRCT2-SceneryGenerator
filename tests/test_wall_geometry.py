@@ -132,6 +132,14 @@ def test_small_scenery_paint_anchor_half_tile_and_voffset():
     assert small_scenery_paint_anchor("2/4", True, True) == 3.0
 
 
+def test_small_scenery_paint_anchor_quarter_tile_ignores_voffset():
+    # Quarter-tile shapes take the engine's quadrant paint path, where
+    # VOFFSET_CENTRE only affects support heights, never the paint offset.
+    assert small_scenery_paint_anchor("1/4", True, False) is None
+    assert small_scenery_paint_anchor("1/4", True, True) is None
+    assert small_scenery_paint_anchor("1/4+D", True, True) is None
+
+
 def test_anchor_corners_match_tile_corner_pattern():
     # The anchor at the tile origin (0, 0) is exactly the large-scenery
     # reference corner pattern.
