@@ -58,11 +58,9 @@ class _FakeContext:
         return _FakeBuilder()
 
 
-@pytest.mark.parametrize("rotatable,expected", [(True, 4), (False, 1)])
-def test_count_matches_render(rotatable, expected):
-    num = 4 if rotatable else 1
-    assert count_small_scenery_sprites(num) == expected
-    assert len(render_small_scenery(_FakeScene(), num_rotations=num)) == expected
+def test_count_matches_render():
+    assert count_small_scenery_sprites(4) == 4
+    assert len(render_small_scenery(_FakeScene(), num_rotations=4)) == 4
 
 
 def _make_scenery(tmp_path, **overrides):
@@ -105,9 +103,13 @@ def test_build_json_tertiary_colour(tmp_path):
 
 def test_rotatable_defaults_true(tmp_path):
     obj = _make_scenery(tmp_path)
+    assert obj.is_rotatable is True
     assert obj.num_rotations == 4
+    # The engine paints image + direction even for non-rotatable objects (it
+    # places them at a random direction), so 4 sprites are always rendered.
     obj2 = _make_scenery(tmp_path, is_rotatable=False)
-    assert obj2.num_rotations == 1
+    assert obj2.is_rotatable is False
+    assert obj2.num_rotations == 4
 
 
 def test_bad_shape_rejected(tmp_path):
@@ -537,6 +539,28 @@ def test_door_leaf_face_mask_all_leaf_when_rigid():
     )
     # Identical closed/open -> nothing moves -> the whole door is treated as leaf.
     assert list(_door_leaf_face_mask(rigid, rigid)) == [True]
+
+
+def test_render_wall_door_topology_change_falls_back_to_whole_leaf():
+    import numpy as _np
+    from openrct2_scenery_generator.sprite_renderer import render_wall_door
+    from openrct2_x7_renderer.types import MeshFrame, Model
+
+    # Pose meshes with different vertex/face counts (per-pose re-extracted
+    # deforming geometry): the vertex-motion leaf split is undefined, so the
+    # whole pose renders as the leaf and the table still fills 36 slots.
+    v = _np.array([[0, 0, 0], [0, 0, 1], [0, 1, 0]], dtype=_np.float32)
+    tri = Mesh(
+        vertices=v, normals=v.copy(),
+        uvs=_np.zeros((3, 2), dtype=_np.float32),
+        faces=_np.array([[0, 1, 2]], dtype=_np.uint32),
+        face_materials=_np.zeros(1, dtype=_np.uint32),
+        materials=[Material()],
+    )
+    quad = _back_front_mesh()  # 4 vertices / 2 faces
+    model = Model(meshes=[[MeshFrame(mesh_index=0)] + [MeshFrame(mesh_index=1)] * 4])
+    imgs = render_wall_door(_FakeContext(), [tri, quad], model)
+    assert len(imgs) == 36
 
 
 def test_render_wall_animated_blank_frames_and_progress():
