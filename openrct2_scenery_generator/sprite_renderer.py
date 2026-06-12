@@ -274,29 +274,24 @@ def _submesh(mesh: Mesh, keep: NDArray[np.bool_]) -> Mesh:
 
 def _filter_glass(mesh: Mesh, want_glass: bool) -> Mesh:
     """Sub-mesh of the faces whose material's is_glass matches want_glass."""
-    keep = np.array(
-        [mesh.materials[m].is_glass == want_glass for m in mesh.face_materials],
-        dtype=bool,
+    by_material = np.array(
+        [m.is_glass == want_glass for m in mesh.materials], dtype=bool
     )
-    return _submesh(mesh, keep)
+    return _submesh(mesh, by_material[mesh.face_materials])
 
 
 def _filter_keep(mesh: Mesh, attr: str) -> Mesh:
     """Sub-mesh of the faces whose material has attr set."""
-    keep = np.array(
-        [getattr(mesh.materials[m], attr) for m in mesh.face_materials],
-        dtype=bool,
-    )
-    return _submesh(mesh, keep)
+    by_material = np.array([getattr(m, attr) for m in mesh.materials], dtype=bool)
+    return _submesh(mesh, by_material[mesh.face_materials])
 
 
 def _filter_side(mesh: Mesh, *, drop_attr: str) -> Mesh:
     """Sub-mesh excluding faces whose material has drop_attr set."""
-    keep = np.array(
-        [not getattr(mesh.materials[m], drop_attr) for m in mesh.face_materials],
-        dtype=bool,
+    by_material = np.array(
+        [not getattr(m, drop_attr) for m in mesh.materials], dtype=bool
     )
-    return _submesh(mesh, keep)
+    return _submesh(mesh, by_material[mesh.face_materials])
 
 
 # The two paint views of a block: ("/" view, "\" view)

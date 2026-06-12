@@ -160,8 +160,12 @@ def _sample_animation_poses(
     if num_poses <= 1 or f_end <= f_start:
         frames = [f_start] * max(num_poses, 1)
     elif cyclic:
+        # The sample points i * period / num_poses live on a cycle, so a value
+        # that rounds up to `period` (possible once num_poses >= 2 * period)
+        # wraps back to the seam frame f_start rather than sampling f_end + 1,
+        # which is outside the keyframed range.
         period = f_end - f_start + 1
-        frames = [f_start + round(i * period / num_poses) for i in range(num_poses)]
+        frames = [f_start + round(i * period / num_poses) % period for i in range(num_poses)]
     else:
         frames = [
             f_start + round(i * (f_end - f_start) / (num_poses - 1))
