@@ -89,3 +89,10 @@ Launch the game, and it should be available as an option in the Object Selection
 
 
 <img src="_static/dumpster-in-game.png" width="424" alt="">
+
+--- 
+
+## Credit:
+
+- For the dumpster model: https://sketchfab.com/3d-models/low-poly-dumpsters-b9ec48bea3544743a72590a979c68a63
+  - by https://sketchfab.com/Den1121 (CC Attribution license)
