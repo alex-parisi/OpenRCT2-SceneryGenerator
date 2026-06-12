@@ -561,19 +561,48 @@ class VGSBatchSettings(PropertyGroup):
     index: IntProperty(default=0)
 
 
+# VGSLight (= SharedLight) is registered cooperatively, NOT in _CLASSES: Blender shares
+# the bundled openrct2_objectcommon wheel across the OpenRCT2 add-ons, so SharedLight is
+# one class object — whichever add-on loads first registers it, the rest must skip it
+# (else "already registered as a subclass 'SharedLight'"). Mirrors the shared parent
+# panel guard in panels.py.
 _CLASSES = (
     VGSMaterialSettings,
     VGSObjectSettings,
     VGSGroupEntry,
     VGSTile,
-    VGSLight,
     VGSScenerySettings,
     VGSBatchEntry,
     VGSBatchSettings,
 )
 
+_shared_light_owned = False
+
+
+def _register_shared_light():
+    """Register SharedLight unless another OpenRCT2 add-on already did.
+
+    Blender shares the bundled wheel, so ``VGSLight`` is the very class object the
+    other add-ons register; ``is_registered`` is the reliable cross-add-on check
+    (the class is not exposed as ``bpy.types.SharedLight``).
+    """
+    global _shared_light_owned
+    if not VGSLight.is_registered:
+        bpy.utils.register_class(VGSLight)
+        _shared_light_owned = True
+
+
+def _unregister_shared_light():
+    """Drop SharedLight only if this add-on was the one that registered it."""
+    global _shared_light_owned
+    if _shared_light_owned:
+        bpy.utils.unregister_class(VGSLight)
+        _shared_light_owned = False
+
 
 def register():
+    # SharedLight must exist before VGSScenerySettings' CollectionProperty(type=VGSLight).
+    _register_shared_light()
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     Scene.vgs_scenery = PointerProperty(type=VGSScenerySettings)
@@ -589,3 +618,4 @@ def unregister():
     del Scene.vgs_scenery
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)
+    _unregister_shared_light()
