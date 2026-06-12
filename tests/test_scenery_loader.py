@@ -150,6 +150,18 @@ def test_door_json_emits_isdoor_and_drops_glass(tri_mesh):
     assert "hasGlass" not in props  # a door takes its own paint path, no glass block
 
 
+def test_door_json_drops_allowed_on_slope(tri_mesh, caplog):
+    obj = build_wall_scenery(
+        _wall_config(is_door=True, is_allowed_on_slope=True, animation=_door_frames()),
+        [tri_mesh],
+    )
+    with caplog.at_level("WARNING"):
+        props = build_wall_scenery_json(obj)["properties"]
+    # The 36-image door table has no slope sprites, so the flag is dropped.
+    assert "isAllowedOnSlope" not in props
+    assert "isAllowedOnSlope" in caplog.text
+
+
 def test_wall_json_emits_door_sound_and_scrolling(tri_mesh):
     obj = build_wall_scenery(
         _wall_config(door_sound=3, scrolling_mode=2, is_door=True, animation=_door_frames()),

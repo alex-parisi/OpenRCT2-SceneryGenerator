@@ -61,7 +61,7 @@ _DISPATCH: dict[str, tuple[_Loader, _Exporter, _Exporter]] = {
 def _render(args: argparse.Namespace, root: dict[str, Any], lights: list[Light]) -> None:
     load, export, export_test = _DISPATCH[object_type_of(root)]
     obj = load(args.input)
-    context = make_context(lights, obj.units_per_tile, False)
+    context = make_context(lights, obj.units_per_tile, args.test, root)
     if args.test:
         export_test(obj, context)
     else:

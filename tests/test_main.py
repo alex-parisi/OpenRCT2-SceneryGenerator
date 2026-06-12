@@ -30,7 +30,9 @@ def _patch_dispatch(monkeypatch, calls, object_type="scenery_small"):
     monkeypatch.setattr(
         cli, "_DISPATCH", {object_type: (fake_load, fake_export, fake_export_test)}
     )
-    monkeypatch.setattr(cli, "make_context", lambda lights, upt, test: ("ctx", upt, test))
+    monkeypatch.setattr(
+        cli, "make_context", lambda lights, upt, test, root=None: ("ctx", upt, test)
+    )
     monkeypatch.setattr(cli, "output_directory_of", lambda root: "out-dir")
     return obj
 
@@ -53,7 +55,8 @@ def test_render_test_path(monkeypatch):
     _patch_dispatch(monkeypatch, calls)
     cli._render(_args("s.json", test=True), {}, [])
     assert "export" not in calls
-    assert calls["export_test"]["ctx"] == ("ctx", 32.0, False)
+    # make_context was told this is a test render (TEST_ZOOM preview scale).
+    assert calls["export_test"]["ctx"] == ("ctx", 32.0, True)
 
 
 @pytest.mark.parametrize(
@@ -125,7 +128,7 @@ def test_main_end_to_end_through_run_cli(monkeypatch, tmp_path):
     monkeypatch.setattr(
         cli, "_DISPATCH", {"scenery_small": (fake_load, fake_export, lambda o, c: None)}
     )
-    monkeypatch.setattr(cli, "make_context", lambda lights, upt, test: "ctx")
+    monkeypatch.setattr(cli, "make_context", lambda lights, upt, test, root=None: "ctx")
     monkeypatch.setattr(cli, "output_directory_of", lambda root: tmp_path)
 
     assert cli.main([str(cfg)]) == 0

@@ -47,11 +47,32 @@ _EXPORTERS = {
 }
 
 
-def _build_scenery_from_scene(context):
-    """Main-thread step: read bpy data into a scenery object + its kind."""
-    if context.scene.vgs_scenery.object_type == "scenery_group":
-        return "group", scene_to_scenery.build_group(context)
-    config, meshes = scene_to_scenery.build_config_and_meshes(context)
+def _build_one(
+    context,
+    *,
+    ss=None,
+    objects=None,
+    offset=(0.0, 0.0, 0.0),
+    shared=None,
+    group_entries=(),
+):
+    """Main-thread step: read bpy data into a scenery object + its kind.
+
+    With no keyword arguments this builds the whole scene from
+    ``scene.vgs_scenery`` (single-object mode); a batch entry passes its own
+    settings/objects/offset plus the scene settings as ``shared`` and, for a
+    group with "Include All Batch Objects" on, its sibling ids as
+    ``group_entries``.
+    """
+    if ss is None:
+        ss = context.scene.vgs_scenery
+    if ss.object_type == "scenery_group":
+        return "group", scene_to_scenery.build_group(
+            context, ss=ss, shared=shared, auto_entries=group_entries
+        )
+    config, meshes = scene_to_scenery.build_config_and_meshes(
+        context, ss=ss, objects=objects, offset=offset, shared=shared
+    )
     obj_type = config["object_type"]
     if obj_type == "scenery_large":
         return "large", build_large_scenery(config, meshes)
@@ -64,6 +85,88 @@ def _build_scenery_from_scene(context):
     return "small", build_small_scenery(config, meshes)
 
 
+def active_batch_entry(context):
+    """The selected batch entry, or None when batch mode is off or empty."""
+    bs = context.scene.vgs_batch
+    if not (bs.enabled and bs.entries):
+        return None
+    return bs.entries[min(bs.index, len(bs.entries) - 1)]
+
+
+def active_settings(context):
+    """The settings being edited: the active batch entry's in batch mode,
+    otherwise the scene's."""
+    entry = active_batch_entry(context)
+    return context.scene.vgs_scenery if entry is None else entry.settings
+
+
+def _batch_member_ids(context, group_entry):
+    """Ids of every non-group batch entry except ``group_entry`` itself, in
+    list order — the auto-filled membership of a batch scenery group."""
+    return [
+        e.settings.id.strip()
+        for e in context.scene.vgs_batch.entries
+        if e.as_pointer() != group_entry.as_pointer()
+        and e.settings.object_type != "scenery_group"
+        and e.settings.id.strip()
+    ]
+
+
+def _build_entry(context, entry):
+    """Build one batch entry, prefixing build errors with the entry's name."""
+    label = entry.name or entry.settings.id or "unnamed"
+    is_group = entry.settings.object_type == "scenery_group"
+    if not is_group and entry.collection is None:
+        raise scene_to_scenery.SceneError(
+            f"Batch object '{label}': no Collection assigned."
+        )
+    objects = [] if entry.collection is None else entry.collection.all_objects
+    group_entries = ()
+    if is_group and entry.settings.entries_from_batch:
+        group_entries = _batch_member_ids(context, entry)
+    try:
+        return _build_one(
+            context,
+            ss=entry.settings,
+            objects=objects,
+            offset=tuple(entry.offset),
+            shared=context.scene.vgs_scenery,
+            group_entries=group_entries,
+        )
+    except scene_to_scenery.SceneError as e:
+        raise scene_to_scenery.SceneError(f"Batch object '{label}': {e}") from e
+
+
+def _parkobj_filename(object_id: str) -> str:
+    return (object_id or "scenery").replace("/", "_") + ".parkobj"
+
+
+def _copy_props(src, dst) -> None:
+    """Deep-copy a PropertyGroup's properties (seeds a new batch entry's
+    settings from the selected entry or the single-object settings)."""
+    for prop in src.bl_rna.properties:
+        ident = prop.identifier
+        if ident == "rna_type":
+            continue
+        if prop.type == "POINTER":
+            value = getattr(src, ident)
+            if isinstance(value, bpy.types.PropertyGroup):
+                _copy_props(value, getattr(dst, ident))
+            else:
+                # ID datablock pointer (e.g. an Image): share the reference.
+                setattr(dst, ident, value)
+        elif prop.type == "COLLECTION":
+            dst_coll = getattr(dst, ident)
+            dst_coll.clear()
+            for item in getattr(src, ident):
+                _copy_props(item, dst_coll.add())
+        elif not prop.is_readonly:
+            value = getattr(src, ident)
+            if getattr(prop, "is_array", False):
+                value = tuple(value)
+            setattr(dst, ident, value)
+
+
 class _SceneryModalBase(RenderModalBase):
     """Shared base for the scenery render operators."""
 
@@ -71,7 +174,11 @@ class _SceneryModalBase(RenderModalBase):
     _invalid_prefix = "Invalid scenery"
 
     def _build(self, context):
-        return _build_scenery_from_scene(context)
+        # In batch mode, Test Render / single export act on the selected entry.
+        entry = active_batch_entry(context)
+        if entry is not None:
+            return _build_entry(context, entry)
+        return _build_one(context)
 
     def _prepare(self, context, payload) -> None:
         self._lights = lights_from_items(context.scene.vgs_scenery.lights)
@@ -122,10 +229,10 @@ class VGS_OT_export_parkobj(_SceneryModalBase):
     filter_glob: StringProperty(default="*.parkobj", options={"HIDDEN"})
 
     def invoke(self, context, event):
-        ss = context.scene.vgs_scenery
+        entry = active_batch_entry(context)
+        ss = context.scene.vgs_scenery if entry is None else entry.settings
         if not self.filepath:
-            base = (ss.id or "scenery").replace("/", "_")
-            self.filepath = bpy.path.ensure_ext(base, ".parkobj")
+            self.filepath = _parkobj_filename(ss.id)
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
@@ -147,13 +254,133 @@ class VGS_OT_export_parkobj(_SceneryModalBase):
         return {"FINISHED"}
 
 
+class VGS_OT_export_batch(_SceneryModalBase):
+    bl_idname = "vgs.export_batch"
+    bl_label = "Export All"
+    bl_description = (
+        "Render every batch object and write one .parkobj per entry into a folder"
+    )
+
+    _status_verb = "Exporting batch"
+
+    directory: StringProperty(subtype="DIR_PATH")
+    filter_glob: StringProperty(default="", options={"HIDDEN"})
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def _build(self, context):
+        # Build every entry up front so all scene errors (empty collection,
+        # missing tiles, duplicate ids, ...) surface before any rendering.
+        bs = context.scene.vgs_batch
+        if not bs.entries:
+            raise scene_to_scenery.SceneError(
+                "Batch list is empty. Add at least one object."
+            )
+        by_filename: dict[str, str] = {}
+        for entry in bs.entries:
+            if not entry.settings.id.strip():
+                raise scene_to_scenery.SceneError(
+                    f"Batch object '{entry.name}' has no Object ID."
+                )
+            filename = _parkobj_filename(entry.settings.id)
+            if filename in by_filename:
+                raise scene_to_scenery.SceneError(
+                    f"Batch objects '{by_filename[filename]}' and '{entry.name}' "
+                    f"both export as {filename}. Object IDs must be unique."
+                )
+            by_filename[filename] = entry.name
+        payloads = []
+        for entry in bs.entries:
+            kind, obj = _build_entry(context, entry)
+            payloads.append((kind, obj, _parkobj_filename(entry.settings.id)))
+        return payloads
+
+    def _prepare(self, context, payloads) -> None:
+        super()._prepare(context, payloads)
+        self._dir = bpy.path.abspath(self.directory)
+        self._count = len(payloads)
+
+    def _render(self, payloads) -> None:
+        total = len(payloads)
+        for i, (kind, obj, filename) in enumerate(payloads):
+            ctx = make_context(self._lights, obj.units_per_tile, False)
+            work = tempfile.mkdtemp(prefix="vgs_export_")
+            _EXPORTERS[kind][0](obj, ctx, os.path.join(self._dir, filename), work)
+            self.set_progress(i + 1, total)
+
+    def _on_success(self, context):
+        elapsed = int(time.monotonic() - self._start_time)
+        build = f" (build {self._build_secs}s)" if self._build_secs else ""
+        self.report(
+            {"INFO"},
+            f"Exported {self._count} .parkobj files to {self._dir} in {elapsed}s{build}",
+        )
+        return {"FINISHED"}
+
+
+class VGS_OT_batch_add(Operator):
+    bl_idname = "vgs.batch_add"
+    bl_label = "Add Batch Object"
+    bl_description = (
+        "Add an object to the batch. Its settings start as a copy of the "
+        "selected entry (or of the single-object settings for the first entry)"
+    )
+
+    def execute(self, context):
+        bs = context.scene.vgs_batch
+        had = len(bs.entries)
+        entry = bs.entries.add()
+        # Re-fetch the source after add(): growing a bpy collection can
+        # invalidate references to existing items.
+        if had:
+            src = bs.entries[min(bs.index, had - 1)].settings
+        else:
+            src = context.scene.vgs_scenery
+        _copy_props(src, entry.settings)
+        entry.name = f"Object {len(bs.entries)}"
+        bs.index = len(bs.entries) - 1
+        return {"FINISHED"}
+
+
+class VGS_OT_batch_remove(Operator):
+    bl_idname = "vgs.batch_remove"
+    bl_label = "Remove Batch Object"
+    bl_description = "Remove the selected batch object"
+
+    def execute(self, context):
+        bs = context.scene.vgs_batch
+        if not bs.entries:
+            return {"CANCELLED"}
+        bs.entries.remove(bs.index)
+        bs.index = max(0, min(bs.index, len(bs.entries) - 1))
+        return {"FINISHED"}
+
+
+class VGS_OT_batch_offset_cursor(Operator):
+    bl_idname = "vgs.batch_offset_cursor"
+    bl_label = "Set from 3D Cursor"
+    bl_description = (
+        "Set the selected entry's collection offset to the 3D cursor position "
+        "(place the cursor where the collection's origin was moved to)"
+    )
+
+    def execute(self, context):
+        bs = context.scene.vgs_batch
+        if not bs.entries:
+            return {"CANCELLED"}
+        bs.entries[bs.index].offset = context.scene.cursor.location
+        return {"FINISHED"}
+
+
 class VGS_OT_tile_add(Operator):
     bl_idname = "vgs.tile_add"
     bl_label = "Add Tile"
     bl_description = "Add a tile to the large-scenery footprint"
 
     def execute(self, context):
-        ss = context.scene.vgs_scenery
+        ss = active_settings(context)
         ss.tiles.add()
         ss.tile_index = len(ss.tiles) - 1
         return {"FINISHED"}
@@ -165,7 +392,7 @@ class VGS_OT_tile_remove(Operator):
     bl_description = "Remove the selected tile"
 
     def execute(self, context):
-        ss = context.scene.vgs_scenery
+        ss = active_settings(context)
         if not ss.tiles:
             return {"CANCELLED"}
         ss.tiles.remove(ss.tile_index)
@@ -179,7 +406,7 @@ class VGS_OT_entry_add(Operator):
     bl_description = "Add a member object id to the scenery group"
 
     def execute(self, context):
-        ss = context.scene.vgs_scenery
+        ss = active_settings(context)
         ss.entries.add()
         ss.entry_index = len(ss.entries) - 1
         return {"FINISHED"}
@@ -191,7 +418,7 @@ class VGS_OT_entry_remove(Operator):
     bl_description = "Remove the selected member object id"
 
     def execute(self, context):
-        ss = context.scene.vgs_scenery
+        ss = active_settings(context)
         if not ss.entries:
             return {"CANCELLED"}
         ss.entries.remove(ss.entry_index)
@@ -228,6 +455,10 @@ class VGS_OT_light_remove(Operator):
 _CLASSES = (
     VGS_OT_test_render,
     VGS_OT_export_parkobj,
+    VGS_OT_export_batch,
+    VGS_OT_batch_add,
+    VGS_OT_batch_remove,
+    VGS_OT_batch_offset_cursor,
     VGS_OT_tile_add,
     VGS_OT_tile_remove,
     VGS_OT_entry_add,

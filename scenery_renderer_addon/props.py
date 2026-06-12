@@ -479,6 +479,14 @@ class VGSScenerySettings(PropertyGroup):
     )
 
     # Scenery group
+    entries_from_batch: BoolProperty(
+        name="Include All Batch Objects",
+        description=(
+            "Automatically add every other batch object's id to this group's "
+            "members at export; the list below adds extra members on top"
+        ),
+        default=False,
+    )
     priority: IntProperty(
         name="Priority",
         description="Sort order of the tab in the scenery window (lower = earlier)",
@@ -504,6 +512,51 @@ class VGSScenerySettings(PropertyGroup):
     )
 
 
+class VGSBatchEntry(PropertyGroup):
+    """One object of a batch export: a Collection plus its own full settings.
+
+    Identity and type settings live in the nested ``settings``; scale, authors,
+    version, scenery group, and lighting are shared from the scene settings at
+    export.
+    """
+
+    name: StringProperty(name="Name", default="Object")
+    collection: PointerProperty(
+        name="Collection",
+        description="Blender Collection containing this object's meshes",
+        type=bpy.types.Collection,
+    )
+    offset: FloatVectorProperty(
+        name="Collection Offset",
+        description=(
+            "Amount this collection was moved in the scene (Blender X/Y/Z). "
+            "Subtracted back out at export so the object renders centred. Set "
+            "this to the same translation you used to shift the collection "
+            "aside so several objects don't overlap in the viewport."
+        ),
+        size=3,
+        default=(0.0, 0.0, 0.0),
+        subtype="TRANSLATION",
+    )
+    settings: PointerProperty(type=VGSScenerySettings)
+
+
+class VGSBatchSettings(PropertyGroup):
+    """Scene-level batch export state: the list of objects to export."""
+
+    enabled: BoolProperty(
+        name="Batch Export",
+        description=(
+            "Export several scenery objects from this scene, one Collection "
+            "per .parkobj. Scale, authors, version, scenery group, and "
+            "lighting are shared; everything else is set per object"
+        ),
+        default=False,
+    )
+    entries: CollectionProperty(type=VGSBatchEntry)
+    index: IntProperty(default=0)
+
+
 _CLASSES = (
     VGSMaterialSettings,
     VGSObjectSettings,
@@ -511,6 +564,8 @@ _CLASSES = (
     VGSTile,
     VGSLight,
     VGSScenerySettings,
+    VGSBatchEntry,
+    VGSBatchSettings,
 )
 
 
@@ -518,6 +573,7 @@ def register():
     for cls in _CLASSES:
         bpy.utils.register_class(cls)
     Scene.vgs_scenery = PointerProperty(type=VGSScenerySettings)
+    Scene.vgs_batch = PointerProperty(type=VGSBatchSettings)
     Object.vgs_object = PointerProperty(type=VGSObjectSettings)
     Material.vgs_material = PointerProperty(type=VGSMaterialSettings)
 
@@ -525,6 +581,7 @@ def register():
 def unregister():
     del Material.vgs_material
     del Object.vgs_object
+    del Scene.vgs_batch
     del Scene.vgs_scenery
     for cls in reversed(_CLASSES):
         bpy.utils.unregister_class(cls)

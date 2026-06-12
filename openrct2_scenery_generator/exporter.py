@@ -345,8 +345,12 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
         double_sided = False
 
     if obj.is_door:
-        if has_glass or double_sided or is_animated:
-            log.warning("door walls ignore hasGlass / isDoubleSided / isAnimated")
+        if allowed_on_slope or has_glass or double_sided or is_animated:
+            log.warning(
+                "door walls carry only the fixed door image table; ignoring "
+                "isAllowedOnSlope / hasGlass / isDoubleSided / isAnimated"
+            )
+        allowed_on_slope = False
         has_glass = False
         double_sided = False
         is_animated = False
