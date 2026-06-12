@@ -244,7 +244,7 @@ class VGS_OT_export_parkobj(_SceneryModalBase):
     def _render(self, payload) -> None:
         kind, obj = payload
         ctx = make_context(self._lights, obj.units_per_tile, False)
-        _EXPORTERS[kind][0](obj, ctx, self._parkobj, self._work)
+        _EXPORTERS[kind][0](obj, ctx, self._parkobj, self._work, progress=self.set_progress)
 
     def _on_success(self, context):
         elapsed = int(time.monotonic() - self._start_time)

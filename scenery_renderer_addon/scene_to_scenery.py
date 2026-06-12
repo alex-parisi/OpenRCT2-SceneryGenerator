@@ -474,8 +474,8 @@ _GROUP_ICON_SIZE = 32
 
 
 def _group_preview(ss):
-    """Quantise the group's tab-icon image to the RCT2 palette, centered on its
-    draw origin, or None when no icon is set."""
+    """Quantise the group's tab-icon image to the RCT2 palette, anchored on the
+    engine's tab-icon draw point, or None when no icon is set."""
     if ss.icon is None:
         return None
     with tempfile.TemporaryDirectory(prefix="vgs_icon_") as tmpdir:
@@ -488,11 +488,15 @@ def _group_preview(ss):
             icon = quantize_to_indexed(path, size=_GROUP_ICON_SIZE)
         finally:
             bpy.data.images.remove(img)
+    # The engine blits the icon at the tab widget's top-left and the
+    # object-selection preview at centre - (15, 14): both expect a vanilla
+    # ~31x27 tab sprite anchored at offset (0, 0), i.e. with its centre 15 px
+    # right of / 14 px below the draw point. Centre the icon on that point.
     return IndexedImage(
         width=icon.width,
         height=icon.height,
-        x_offset=-icon.width // 2,
-        y_offset=-icon.height // 2,
+        x_offset=15 - icon.width // 2,
+        y_offset=14 - icon.height // 2,
         pixels=icon.pixels,
     )
 
