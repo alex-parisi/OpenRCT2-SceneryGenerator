@@ -52,7 +52,6 @@ class VGS_PT_scenery(Panel):
         bs = context.scene.vgs_batch
 
         layout.prop(bs, "enabled", icon="OUTLINER_COLLECTION")
-        layout.prop(ss, "dither")
         if bs.enabled:
             _draw_batch(layout, ss, bs)
             return
@@ -71,6 +70,11 @@ class VGS_PT_scenery(Panel):
         box.prop(ss, "name")
         box.prop(ss, "authors")
         box.prop(ss, "version")
+
+        box = layout.box()
+        box.label(text="Dither", icon="MOD_NOISE")
+        box.prop(ss, "dither")
+        box.prop(ss, "dither_stability")
 
         if is_group:
             _draw_group(layout, ss)
@@ -110,9 +114,7 @@ def _draw_type_settings(layout, ss):
             row.prop(ss, "anim_end_frame")
             abox.label(text="Keyframe the geometry over this range.", icon="INFO")
             if ss.animation_loop == "LOOP":
-                abox.label(
-                    text="End = last frame before the loop repeats.", icon="INFO"
-                )
+                abox.label(text="End = last frame before the loop repeats.", icon="INFO")
             if ss.animation_deform != "NEVER":
                 abox.label(
                     text="Deforming objects: one mesh baked per pose.",
@@ -168,8 +170,7 @@ def _draw_type_settings(layout, ss):
                 row.prop(ss, "anim_start_frame")
                 row.prop(ss, "anim_end_frame")
                 abox.label(
-                    text=f"Flat-only; {WALL_ANIMATION_FRAMES} frames sampled "
-                    "over this range.",
+                    text=f"Flat-only; {WALL_ANIMATION_FRAMES} frames sampled over this range.",
                     icon="INFO",
                 )
 
@@ -294,6 +295,11 @@ def _draw_batch(layout, ss, bs):
     box.prop(ss, "scenery_group")
 
     box = layout.box()
+    box.label(text="Dither", icon="MOD_NOISE")
+    box.prop(ss, "dither")
+    box.prop(ss, "dither_stability")
+
+    box = layout.box()
     box.label(text="Batch Objects", icon="OUTLINER_COLLECTION")
     row = box.row()
     row.template_list("VGS_UL_batch_entries", "", bs, "entries", bs, "index", rows=3)
@@ -332,17 +338,17 @@ def _draw_batch(layout, ss, bs):
     col.scale_y = 1.3
     col.operator("vgs.test_render", icon="RENDER_STILL", text="Test Render (Selected)")
     col.operator("vgs.export_parkobj", icon="EXPORT", text="Export Selected")
-    col.operator(
-        "vgs.export_batch", icon="EXPORT", text=f"Export All ({len(bs.entries)} objects)"
-    )
+    col.operator("vgs.export_batch", icon="EXPORT", text=f"Export All ({len(bs.entries)} objects)")
 
 
 def _draw_lights(layout, ss):
     box = layout.box()
     row = box.row()
     row.prop(
-        ss, "show_lights",
-        icon="TRIA_DOWN" if ss.show_lights else "TRIA_RIGHT", emboss=False,
+        ss,
+        "show_lights",
+        icon="TRIA_DOWN" if ss.show_lights else "TRIA_RIGHT",
+        emboss=False,
     )
     row.label(text="", icon="LIGHT_SUN")
     if ss.show_lights:
@@ -418,8 +424,13 @@ def _draw_object_settings(layout, obj, object_type):
         return
     if len(obj.material_slots) > 1:
         box.template_list(
-            "MATERIAL_UL_matslots", "", obj, "material_slots",
-            obj, "active_material_index", rows=2,
+            "MATERIAL_UL_matslots",
+            "",
+            obj,
+            "material_slots",
+            obj,
+            "active_material_index",
+            rows=2,
         )
     mat = obj.active_material
     if mat is None:
@@ -482,9 +493,7 @@ class VGS_PT_object_view3d(Panel):
         return obj is not None and obj.type == "MESH" and hasattr(obj, "vgs_object")
 
     def draw(self, context):
-        _draw_object_settings(
-            self.layout, context.object, active_settings(context).object_type
-        )
+        _draw_object_settings(self.layout, context.object, active_settings(context).object_type)
 
 
 _CLASSES = (

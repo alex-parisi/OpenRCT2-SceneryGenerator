@@ -118,9 +118,7 @@ def _build_entry(context, entry):
     label = entry.name or entry.settings.id or "unnamed"
     is_group = entry.settings.object_type == "scenery_group"
     if not is_group and entry.collection is None:
-        raise scene_to_scenery.SceneError(
-            f"Batch object '{label}': no Collection assigned."
-        )
+        raise scene_to_scenery.SceneError(f"Batch object '{label}': no Collection assigned.")
     objects = [] if entry.collection is None else entry.collection.all_objects
     group_entries = ()
     if is_group and entry.settings.entries_from_batch:
@@ -184,6 +182,7 @@ class _SceneryModalBase(RenderModalBase):
     def _prepare(self, context, payload) -> None:
         self._lights = lights_from_items(context.scene.vgs_scenery.lights)
         self._dither = context.scene.vgs_scenery.dither
+        self._dither_stability = context.scene.vgs_scenery.dither_stability
 
 
 # The previous test render's output directory. Its PNG must outlive the
@@ -211,7 +210,13 @@ class VGS_OT_test_render(_SceneryModalBase):
     def _render(self, payload) -> None:
         kind, obj = payload
         # Render at the real in-game scale
-        ctx = make_context(self._lights, obj.units_per_tile, False, dither=self._dither)
+        ctx = make_context(
+            self._lights,
+            obj.units_per_tile,
+            False,
+            dither=self._dither,
+            stability=self._dither_stability,
+        )
         _EXPORTERS[kind][1](obj, ctx, self._tmp)
         # Every kind writes a combined contact sheet
         self._png = os.path.join(self._tmp, "preview_combined.png")
@@ -255,7 +260,13 @@ class VGS_OT_export_parkobj(_SceneryModalBase):
 
     def _render(self, payload) -> None:
         kind, obj = payload
-        ctx = make_context(self._lights, obj.units_per_tile, False, dither=self._dither)
+        ctx = make_context(
+            self._lights,
+            obj.units_per_tile,
+            False,
+            dither=self._dither,
+            stability=self._dither_stability,
+        )
         try:
             _EXPORTERS[kind][0](obj, ctx, self._parkobj, self._work, progress=self.set_progress)
         finally:
@@ -272,9 +283,7 @@ class VGS_OT_export_parkobj(_SceneryModalBase):
 class VGS_OT_export_batch(_SceneryModalBase):
     bl_idname = "vgs.export_batch"
     bl_label = "Export All"
-    bl_description = (
-        "Render every batch object and write one .parkobj per entry into a folder"
-    )
+    bl_description = "Render every batch object and write one .parkobj per entry into a folder"
 
     _status_verb = "Exporting batch"
 
@@ -290,15 +299,11 @@ class VGS_OT_export_batch(_SceneryModalBase):
         # missing tiles, duplicate ids, ...) surface before any rendering.
         bs = context.scene.vgs_batch
         if not bs.entries:
-            raise scene_to_scenery.SceneError(
-                "Batch list is empty. Add at least one object."
-            )
+            raise scene_to_scenery.SceneError("Batch list is empty. Add at least one object.")
         by_filename: dict[str, str] = {}
         for entry in bs.entries:
             if not entry.settings.id.strip():
-                raise scene_to_scenery.SceneError(
-                    f"Batch object '{entry.name}' has no Object ID."
-                )
+                raise scene_to_scenery.SceneError(f"Batch object '{entry.name}' has no Object ID.")
             filename = _parkobj_filename(entry.settings.id)
             if filename in by_filename:
                 raise scene_to_scenery.SceneError(
@@ -320,7 +325,13 @@ class VGS_OT_export_batch(_SceneryModalBase):
     def _render(self, payloads) -> None:
         total = len(payloads)
         for i, (kind, obj, filename) in enumerate(payloads):
-            ctx = make_context(self._lights, obj.units_per_tile, False, dither=self._dither)
+            ctx = make_context(
+                self._lights,
+                obj.units_per_tile,
+                False,
+                dither=self._dither,
+                stability=self._dither_stability,
+            )
             work = tempfile.mkdtemp(prefix="vgs_export_")
             try:
                 _EXPORTERS[kind][0](obj, ctx, os.path.join(self._dir, filename), work)

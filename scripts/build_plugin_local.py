@@ -18,10 +18,8 @@ from _buildlib import (
     DEPS,
     FRONTEND_PREFIX,
     REPO,
-    objectcommon_spec,
+    acquire_inrepo_wheels,
     one_renderer_wheel,
-    pip_download_cmd,
-    renderer_spec,
     run,
     set_toml_array,
     wheels_block,
@@ -93,16 +91,21 @@ def build_frontend_wheel(out_dir: Path) -> Path:
     return wheels[0]
 
 
-def download_pkgs(out_dir: Path, py_version: str, abi: str, pip_platforms: list[str]) -> None:
-    run(
-        pip_download_cmd(
-            ["uv", "run", "--with", "pip", "python", "-m", "pip"],
-            dest=out_dir,
-            py_version=py_version,
-            abi=abi,
-            platform_tags=pip_platforms,
-            specs=[renderer_spec(), objectcommon_spec(), *dep_specs()],
-        )
+def acquire_packages(out_dir: Path, py_version: str, abi: str, pip_platforms: list[str]) -> None:
+    """Stage the renderer, shared layer, and deps into `out_dir`.
+
+    In the meta-repo the renderer + shared layer are built from the local
+    workspace sources (so unreleased changes ship); a standalone checkout / CI
+    falls back to the pinned PyPI releases. Deps always come from PyPI. See
+    `_buildlib.acquire_inrepo_wheels`.
+    """
+    acquire_inrepo_wheels(
+        ["uv", "run", "--with", "pip", "python", "-m", "pip"],
+        dest=out_dir,
+        py_version=py_version,
+        abi=abi,
+        platform_tags=pip_platforms,
+        dep_specs=dep_specs(),
     )
 
 
@@ -132,8 +135,7 @@ def verify_wheel(wheel: Path) -> None:
             str(wheel),
             "python",
             "-c",
-            "import openrct2_x7_renderer._x7_renderer as n;"
-            "print('embree ok:', n.LIGHT_DIFFUSE)",
+            "import openrct2_x7_renderer._x7_renderer as n;print('embree ok:', n.LIGHT_DIFFUSE)",
         ]
     )
 
@@ -155,9 +157,7 @@ def main() -> None:
         action="store_true",
         help="skip the standalone import check of the renderer wheel",
     )
-    ap.add_argument(
-        "--addon", choices=ADDONS, default="scenery", help="which add-on to build"
-    )
+    ap.add_argument("--addon", choices=ADDONS, default="scenery", help="which add-on to build")
     args = ap.parse_args()
     addon_dir = REPO / ADDONS[args.addon]
 
@@ -175,7 +175,7 @@ def main() -> None:
         stage.mkdir()
 
         build_frontend_wheel(wheels)
-        download_pkgs(wheels, py_version, abi, pip_platforms)
+        acquire_packages(wheels, py_version, abi, pip_platforms)
         if not args.no_verify:
             verify_wheel(one_renderer_wheel(wheels))
         stage_addon(stage, wheels, manifest_platform, addon_dir)

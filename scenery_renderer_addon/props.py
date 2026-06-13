@@ -52,8 +52,10 @@ PATH_ADDITION_RENDER_AS_ITEMS = [
     ("fountain", "Fountain", "Jumping fountain base"),
 ]
 
+
 def _scale_preset_update(self, _context):
     scale_preset_update(self, _context)
+
 
 # Per-material front/back role
 WALL_SIDE_ITEMS = [
@@ -127,12 +129,21 @@ ANIMATION_LOOP_ITEMS = [
 ]
 
 ANIMATION_DEFORM_ITEMS = [
-    ("AUTO", "Auto", "Bake objects with an armature/deform modifier or animated "
-     "shape keys; keep others rigid"),
-    ("ALWAYS", "Bake all", "Re-extract every object's mesh each pose (use for "
-     "deformation Auto can't detect)"),
-    ("NEVER", "Rigid only", "Never re-extract; animate transforms only "
-     "(deformation is frozen at the rest pose)"),
+    (
+        "AUTO",
+        "Auto",
+        "Bake objects with an armature/deform modifier or animated shape keys; keep others rigid",
+    ),
+    (
+        "ALWAYS",
+        "Bake all",
+        "Re-extract every object's mesh each pose (use for deformation Auto can't detect)",
+    ),
+    (
+        "NEVER",
+        "Rigid only",
+        "Never re-extract; animate transforms only (deformation is frozen at the rest pose)",
+    ),
 ]
 
 
@@ -178,8 +189,7 @@ class VGSMaterialSettings(PropertyGroup):
     specular_exponent: FloatProperty(
         name="Specular Exponent",
         description=(
-            "Phong specular exponent: tightness of the highlight "
-            "(higher = smaller, sharper)"
+            "Phong specular exponent: tightness of the highlight (higher = smaller, sharper)"
         ),
         default=50.0,
         min=1.0,
@@ -302,11 +312,23 @@ class VGSScenerySettings(PropertyGroup):
     dither: EnumProperty(
         name="Dither",
         description=(
-            "Palette dithering mode. Bayer stays stable across animation frames; "
-            "Floyd-Steinberg has higher fidelity but its pattern shifts per frame"
+            "Palette dithering mode. Bayer and Blue noise stay stable across "
+            "animation frames; Floyd-Steinberg has higher fidelity but its pattern "
+            "shifts per frame"
         ),
         items=DITHER_MODE_ITEMS,
         default=DEFAULT_DITHER_MODE,
+    )
+    dither_stability: FloatProperty(
+        name="Dither Stability",
+        description=(
+            "Temporal-stability deadband in palette units. Shading changes smaller "
+            "than this quantise identically between frames, reducing dither "
+            "'swimming' in animations; 0 disables it"
+        ),
+        default=0.0,
+        min=0.0,
+        soft_max=16.0,
     )
     id: StringProperty(
         name="Object ID",
@@ -370,9 +392,7 @@ class VGSScenerySettings(PropertyGroup):
         items=ANIMATION_CYCLE_ITEMS,
         default="8",
     )
-    animation_loop: EnumProperty(
-        name="Playback", items=ANIMATION_LOOP_ITEMS, default="LOOP"
-    )
+    animation_loop: EnumProperty(name="Playback", items=ANIMATION_LOOP_ITEMS, default="LOOP")
     animation_delay: IntProperty(
         name="Speed (delay)",
         description="Tick bit-shift; higher = slower animation",
@@ -460,8 +480,7 @@ class VGSScenerySettings(PropertyGroup):
     door_sound: IntProperty(
         name="Door Sound",
         description=(
-            "OpenRCT2 door sound played when the door opens "
-            "(0 = none, 1 = door, 2 = portcullis)"
+            "OpenRCT2 door sound played when the door opens (0 = none, 1 = door, 2 = portcullis)"
         ),
         default=1,
         min=0,
