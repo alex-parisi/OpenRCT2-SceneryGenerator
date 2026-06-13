@@ -183,6 +183,7 @@ class _SceneryModalBase(RenderModalBase):
 
     def _prepare(self, context, payload) -> None:
         self._lights = lights_from_items(context.scene.vgs_scenery.lights)
+        self._dither = context.scene.vgs_scenery.dither
 
 
 # The previous test render's output directory. Its PNG must outlive the
@@ -210,7 +211,7 @@ class VGS_OT_test_render(_SceneryModalBase):
     def _render(self, payload) -> None:
         kind, obj = payload
         # Render at the real in-game scale
-        ctx = make_context(self._lights, obj.units_per_tile, False)
+        ctx = make_context(self._lights, obj.units_per_tile, False, dither=self._dither)
         _EXPORTERS[kind][1](obj, ctx, self._tmp)
         # Every kind writes a combined contact sheet
         self._png = os.path.join(self._tmp, "preview_combined.png")
@@ -254,7 +255,7 @@ class VGS_OT_export_parkobj(_SceneryModalBase):
 
     def _render(self, payload) -> None:
         kind, obj = payload
-        ctx = make_context(self._lights, obj.units_per_tile, False)
+        ctx = make_context(self._lights, obj.units_per_tile, False, dither=self._dither)
         try:
             _EXPORTERS[kind][0](obj, ctx, self._parkobj, self._work, progress=self.set_progress)
         finally:
@@ -319,7 +320,7 @@ class VGS_OT_export_batch(_SceneryModalBase):
     def _render(self, payloads) -> None:
         total = len(payloads)
         for i, (kind, obj, filename) in enumerate(payloads):
-            ctx = make_context(self._lights, obj.units_per_tile, False)
+            ctx = make_context(self._lights, obj.units_per_tile, False, dither=self._dither)
             work = tempfile.mkdtemp(prefix="vgs_export_")
             try:
                 _EXPORTERS[kind][0](obj, ctx, os.path.join(self._dir, filename), work)

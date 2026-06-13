@@ -52,6 +52,7 @@ class VGS_PT_scenery(Panel):
         bs = context.scene.vgs_batch
 
         layout.prop(bs, "enabled", icon="OUTLINER_COLLECTION")
+        layout.prop(ss, "dither")
         if bs.enabled:
             _draw_batch(layout, ss, bs)
             return

@@ -16,6 +16,8 @@ from bpy.props import (
 )
 from bpy.types import Material, Object, PropertyGroup, Scene
 from openrct2_object_common.blender.props import (
+    DEFAULT_DITHER_MODE,
+    DITHER_MODE_ITEMS,
     SCALE_PRESET_ITEMS,
     SharedLight,
     scale_preset_update,
@@ -296,6 +298,15 @@ class VGSScenerySettings(PropertyGroup):
         default=TILE_SIZE,
         min=0.01,
         soft_max=16.0,
+    )
+    dither: EnumProperty(
+        name="Dither",
+        description=(
+            "Palette dithering mode. Bayer stays stable across animation frames; "
+            "Floyd-Steinberg has higher fidelity but its pattern shifts per frame"
+        ),
+        items=DITHER_MODE_ITEMS,
+        default=DEFAULT_DITHER_MODE,
     )
     id: StringProperty(
         name="Object ID",
