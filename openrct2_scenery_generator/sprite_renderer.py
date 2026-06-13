@@ -15,6 +15,7 @@ from openrct2_x7_renderer.geometry import (
     subset_mesh,
 )
 from openrct2_x7_renderer.mesh import Mesh
+from openrct2_x7_renderer.palette import TRANSPARENT_INDEX
 from openrct2_x7_renderer.ray_trace import VIEWS, Context, FinalizedScene, SceneBuilder
 from openrct2_x7_renderer.types import IndexedImage, Model
 
@@ -139,26 +140,60 @@ def render_small_scenery_anchored(
     return images
 
 
-def _render_pose_rotations(
+def _render_mesh_rotations(
     context: Context,
-    meshes: list[Mesh],
-    model: Model,
-    frame: int,
+    mesh: Mesh,
     anchor_corners: list[tuple[float, float]] | None = None,
 ) -> list[IndexedImage]:
-    """Bake pose frame's placements and render all 4 cardinal rotations,
-    anchored at the tile center (or at per-direction anchor points)."""
-    combined = combine_model_world(meshes, model, frame=frame)
+    """Render a baked world-space mesh under all 4 cardinal rotations, anchored
+    at the tile centre (or at per-direction anchor points). An empty mesh
+    renders as four blank sprites."""
+    if mesh.faces.shape[0] == 0:
+        return [IndexedImage.blank(1, 1) for _ in range(4)]
     if anchor_corners is None:
         return _render_scene_views(
-            context, combined, np.zeros(3, dtype=np.float64), [VIEWS[d] for d in range(4)]
+            context, mesh, np.zeros(3, dtype=np.float64), [VIEWS[d] for d in range(4)]
         )
     return [
         _render_scene_view(
-            context, combined, np.array([-ox, 0.0, -oz], dtype=np.float64), VIEWS[d]
+            context, mesh, np.array([-ox, 0.0, -oz], dtype=np.float64), VIEWS[d]
         )
         for d, (ox, oz) in enumerate(anchor_corners)
     ]
+
+
+def _composite_over(base: IndexedImage, top: IndexedImage) -> IndexedImage:
+    """Paint `top` over `base` (top wins where opaque), aligning the two by their
+    draw offsets, and crop the result to its opaque bounds.
+
+    Glues a per-frame moving submesh on top of the once-rendered static submesh
+    so the static pixels stay byte-identical across every animation frame. This
+    is a flat 2-D over-composite with no depth buffer, so it assumes the moving
+    geometry paints in front of the static geometry (as a swinging lid or leaf
+    does); where the static part should occlude the moving part the result is
+    only approximate."""
+    layers = [im for im in (base, top) if (im.pixels != TRANSPARENT_INDEX).any()]
+    if not layers:
+        return IndexedImage.blank(1, 1)
+    left = min(im.x_offset for im in layers)
+    top_edge = min(im.y_offset for im in layers)
+    right = max(im.x_offset + im.width for im in layers)
+    bottom = max(im.y_offset + im.height for im in layers)
+    canvas = np.zeros((bottom - top_edge, right - left), dtype=np.uint8)
+    for im in layers:  # base first, then top paints over it
+        ys, xs = im.y_offset - top_edge, im.x_offset - left
+        region = canvas[ys : ys + im.height, xs : xs + im.width]
+        opaque = im.pixels != TRANSPARENT_INDEX
+        region[opaque] = im.pixels[opaque]
+    nz = np.argwhere(canvas != TRANSPARENT_INDEX)
+    (y0, x0), (y1, x1) = nz.min(axis=0), nz.max(axis=0) + 1
+    return IndexedImage(
+        width=int(x1 - x0),
+        height=int(y1 - y0),
+        x_offset=int(left + x0),
+        y_offset=int(top_edge + y0),
+        pixels=canvas[y0:y1, x0:x1].copy(),
+    )
 
 
 def render_small_scenery_animated(
@@ -171,16 +206,53 @@ def render_small_scenery_animated(
     anchor: float | None = None,
     units_per_tile: float = TILE_SIZE,
 ) -> list[IndexedImage]:
-    """Render an animated small-scenery sprite set in the engine's image order"""
+    """Render an animated small-scenery sprite set in the engine's image order.
+
+    When the per-frame meshes share frame 0's topology, the geometry is split
+    into a static part (rendered once) and a moving part (rendered per frame),
+    then composited, so the static pixels stay byte-identical across frames and
+    only genuinely-moving geometry can change between them — this removes the
+    dither/shading "swim" on the parts that hold still. Objects whose topology
+    changes between frames fall back to rendering the whole mesh per frame."""
     corners = None if anchor is None else _anchor_corners(anchor, units_per_tile)
-    base = _render_pose_rotations(context, meshes, model, 0, corners)
+    frames = [combine_model_world(meshes, model, frame=g) for g in range(num_pose_groups)]
+
+    if num_pose_groups > 1 and _stable_topology(frames):
+        return _render_split_animated(context, frames, corners, progress)
+
+    base = _render_mesh_rotations(context, frames[0], corners)
     if progress is not None:
         progress(1, num_pose_groups)
     images: list[IndexedImage] = list(base) + list(base)
     for g in range(1, num_pose_groups):
-        images.extend(_render_pose_rotations(context, meshes, model, g, corners))
+        images.extend(_render_mesh_rotations(context, frames[g], corners))
         if progress is not None:
             progress(g + 1, num_pose_groups)
+    return images
+
+
+def _render_split_animated(
+    context: Context,
+    frames: list[Mesh],
+    corners: list[tuple[float, float]] | None,
+    progress: Callable[[int, int], None] | None,
+) -> list[IndexedImage]:
+    """Render frames sharing one topology as a frozen static layer plus a
+    per-frame moving layer (see :func:`render_small_scenery_animated`).
+
+    Produces the engine's image order — 4 leading "base" sprites (pose 0)
+    followed by 4 sprites per pose group — identical to the whole-mesh path."""
+    moving = _moving_face_mask(frames)
+    static_imgs = _render_mesh_rotations(context, _submesh(frames[0], ~moving), corners)
+    groups: list[list[IndexedImage]] = []
+    for g, frame_mesh in enumerate(frames):
+        moving_imgs = _render_mesh_rotations(context, _submesh(frame_mesh, moving), corners)
+        groups.append([_composite_over(static_imgs[d], moving_imgs[d]) for d in range(4)])
+        if progress is not None:
+            progress(g + 1, len(frames))
+    images: list[IndexedImage] = list(groups[0])
+    for group in groups:
+        images.extend(group)
     return images
 
 
@@ -270,6 +342,37 @@ def _submesh(mesh: Mesh, keep: NDArray[np.bool_]) -> Mesh:
         face_materials=mesh.face_materials[keep],
         materials=mesh.materials,
     )
+
+
+# A vertex that shifts by more than this (OBJ units) between frames counts as
+# part of the moving geometry (a swinging leaf, lid, ...).
+_MOTION_EPS = 1e-4
+
+
+def _stable_topology(frames: list[Mesh]) -> bool:
+    """True if every frame shares frame 0's vertex- and face-array shapes, so a
+    per-face moving/static split computed against frame 0 applies to all frames."""
+    return all(
+        m.vertices.shape == frames[0].vertices.shape
+        and m.faces.shape == frames[0].faces.shape
+        for m in frames[1:]
+    )
+
+
+def _moving_face_mask(frames: list[Mesh]) -> NDArray[np.bool_]:
+    """Classify each face of frame 0 as moving (True) or static (False) by whether
+    any of its vertices shift by more than ``_MOTION_EPS`` across ``frames``.
+
+    Requires :func:`_stable_topology`. If nothing moves, every face is reported
+    as moving so callers need not special-case a wholly static object."""
+    base = frames[0]
+    moved_vertex = np.zeros(base.vertices.shape[0], dtype=bool)
+    for m in frames[1:]:
+        moved_vertex |= np.abs(base.vertices - m.vertices).max(axis=1) > _MOTION_EPS
+    moved_face = np.asarray(moved_vertex[base.faces].any(axis=1), dtype=np.bool_)
+    if not moved_face.any():
+        return np.ones(base.faces.shape[0], dtype=bool)
+    return moved_face
 
 
 def _filter_glass(mesh: Mesh, want_glass: bool) -> Mesh:
@@ -409,19 +512,10 @@ def count_wall_door_sprites() -> int:
     return DOOR_NUM_IMAGES
 
 
-# A vertex that shifts by more than this (OBJ units) between the closed and fully
-# open pose counts as part of the swinging leaf.
-_DOOR_MOTION_EPS = 1e-4
-
-
 def _door_leaf_face_mask(closed: Mesh, opened: Mesh) -> NDArray[np.bool_]:
     """Classify each face as part of the swinging leaf (True) or the static frame
     (False) by whether any of its vertices move between the closed and open pose."""
-    moved_vertex = np.abs(closed.vertices - opened.vertices).max(axis=1) > _DOOR_MOTION_EPS
-    moved_face: NDArray[np.bool_] = moved_vertex[closed.faces].any(axis=1)
-    if not moved_face.any():
-        return np.ones(closed.faces.shape[0], dtype=bool)
-    return moved_face
+    return _moving_face_mask([closed, opened])
 
 
 def render_wall_door(
@@ -449,11 +543,7 @@ def render_wall_door(
     sampled = [
         combine_model_world(meshes, model, frame=f) for f in range(DOOR_SAMPLE_FRAMES)
     ]
-    if all(
-        m.vertices.shape == sampled[0].vertices.shape
-        and m.faces.shape == sampled[0].faces.shape
-        for m in sampled[1:]
-    ):
+    if _stable_topology(sampled):
         leaf_mask = _door_leaf_face_mask(sampled[0], sampled[-1])
         frame_mesh = _submesh(sampled[0], ~leaf_mask)
         closed_leaf = _submesh(sampled[0], leaf_mask)

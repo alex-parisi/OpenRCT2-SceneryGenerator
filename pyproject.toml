@@ -1,6 +1,6 @@
 [project]
 name = "OpenRCT2-SceneryGenerator"
-version = "0.1.1"
+version = "0.1.2"
 description = "Author and export OpenRCT2 small/large/wall scenery from meshes"
 readme = "README.md"
 requires-python = ">=3.11"

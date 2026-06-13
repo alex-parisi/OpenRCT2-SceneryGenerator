@@ -541,6 +541,46 @@ def test_door_leaf_face_mask_all_leaf_when_rigid():
     assert list(_door_leaf_face_mask(rigid, rigid)) == [True]
 
 
+def test_moving_face_mask_unions_motion_across_all_frames():
+    import numpy as _np
+    from openrct2_scenery_generator.sprite_renderer import _moving_face_mask
+
+    m = _empty_mesh()
+
+    def mesh(verts):
+        return Mesh(
+            vertices=_np.array(verts, dtype=_np.float32),
+            normals=_np.array([[0, 0, 1]] * 4, dtype=_np.float32),
+            uvs=_np.zeros((4, 2), dtype=_np.float32),
+            # face 0 uses the static verts 0,1,2; face 1 uses the moving vert 3.
+            faces=_np.array([[0, 1, 2], [1, 3, 2]], dtype=_np.uint32),
+            face_materials=_np.zeros(2, dtype=_np.uint32),
+            materials=m.materials,
+        )
+
+    # Vert 3 moves only in the middle frame and returns to its start by the last
+    # one, so a first-vs-last comparison would miss it; the union across frames
+    # must still flag face 1 as moving.
+    f0 = mesh([[0, 0, 0], [0, 1, 0], [0, 0, 0.5], [0, 1, 1]])
+    f1 = mesh([[0, 0, 0], [0, 1, 0], [0, 0, 0.5], [1, 1, 1]])
+    f2 = mesh([[0, 0, 0], [0, 1, 0], [0, 0, 0.5], [0, 1, 1]])
+    assert list(_moving_face_mask([f0, f1, f2])) == [False, True]
+
+
+def test_composite_over_aligns_offsets_and_crops():
+    import numpy as _np
+    from openrct2_scenery_generator.sprite_renderer import _composite_over
+
+    # base spans screen box x:[0,2) y:[0,2); top spans x:[1,3) y:[1,3).
+    base = IndexedImage(2, 2, 0, 0, _np.array([[5, 5], [5, 5]], dtype=_np.uint8))
+    top = IndexedImage(2, 2, 1, 1, _np.array([[9, 7], [7, 0]], dtype=_np.uint8))
+    out = _composite_over(base, top)
+    # Union box is x:[0,3) y:[0,3); top paints over base where opaque (the 9 wins
+    # the overlap cell), transparent index 0 leaves base showing through.
+    assert (out.x_offset, out.y_offset, out.width, out.height) == (0, 0, 3, 3)
+    assert out.pixels.tolist() == [[5, 5, 0], [5, 9, 7], [0, 7, 0]]
+
+
 def test_render_wall_door_topology_change_falls_back_to_whole_leaf():
     import numpy as _np
     from openrct2_scenery_generator.sprite_renderer import render_wall_door
