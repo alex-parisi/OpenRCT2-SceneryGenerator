@@ -15,6 +15,7 @@ from bpy.props import (
     StringProperty,
 )
 from bpy.types import Material, Object, PropertyGroup, Scene
+from openrct2_object_common.blender.bake import BAKE_RESOLUTION_ITEMS
 from openrct2_object_common.blender.props import (
     DEFAULT_DITHER_MODE,
     DITHER_MODE_ITEMS,
@@ -163,6 +164,20 @@ class VGSMaterialSettings(PropertyGroup):
         name="Texture",
         description="Optional image; must be saved to disk (its file is read at export)",
         type=bpy.types.Image,
+    )
+    bake_procedural: BoolProperty(
+        name="Bake Procedural Nodes",
+        description=(
+            "Bake this material's procedural shader-node graph to a texture at export "
+            "(albedo only). Requires a UV unwrap. Overrides the flat color"
+        ),
+        default=False,
+    )
+    bake_resolution: EnumProperty(
+        name="Bake Resolution",
+        description="Pixel size of the baked texture",
+        items=BAKE_RESOLUTION_ITEMS,
+        default="256",
     )
     # Phong shading controls
     use_color_override: BoolProperty(

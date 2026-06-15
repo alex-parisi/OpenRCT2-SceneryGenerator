@@ -10,6 +10,7 @@ import tempfile
 
 import bpy
 from mathutils import Vector
+from openrct2_object_common.blender.bake import bake_materials
 from openrct2_object_common.blender.mesh_extract import (
     BASIS,
     SceneError,
@@ -35,6 +36,11 @@ _REGION_MAP = {
 }
 
 
+# Material -> baked Texture map for the current build, populated by
+# build_config_and_meshes before extraction (see bake.bake_materials).
+_baked_textures: dict = {}
+
+
 def _material_from_bpy(bmat) -> Material:
     m, s = material_base(bmat, prop_attr="vgs_material", region_map=_REGION_MAP)
     if s is None:
@@ -47,11 +53,15 @@ def _material_from_bpy(bmat) -> Material:
     elif s.wall_side == "BACK":
         m.is_back = True
 
+    # Texture sources, in priority order: explicit image > baked procedural nodes.
     if s.texture is not None:
         path = bpy.path.abspath(s.texture.filepath_from_user() or s.texture.filepath)
         if path and os.path.exists(path):
             m.texture = load_texture(path)
             m.flags |= MaterialFlag.HAS_TEXTURE
+    if not (m.flags & MaterialFlag.HAS_TEXTURE) and bmat in _baked_textures:
+        m.texture = _baked_textures[bmat]
+        m.flags |= MaterialFlag.HAS_TEXTURE
     return m
 
 
@@ -284,6 +294,12 @@ def build_config_and_meshes(
     depsgraph = context.evaluated_depsgraph_get()
 
     geo_objs = _geometry_objects(scene.objects if objects is None else objects)
+
+    # Bake any procedural-node materials to textures up front (main thread, Cycles),
+    # then feed them into extraction via _material_from_bpy. Re-assigned each call.
+    global _baked_textures
+    _baked_textures = bake_materials(context, geo_objs, prop_attr="vgs_material")
+
     # A wall is a door OR animated, never both
     small_animated = ss.object_type == "scenery_small" and ss.is_animated
     wall_door = ss.object_type == "scenery_wall" and ss.is_door
