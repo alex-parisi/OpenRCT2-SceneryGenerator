@@ -4,85 +4,45 @@ Read the Blender scene into the scenery generator's config + meshes.
 
 from __future__ import annotations
 
-import math
 import os
 import tempfile
 
 import bpy
 from mathutils import Vector
-from openrct2_object_common.blender.bake import bake_materials
 from openrct2_object_common.blender.mesh_extract import (
     BASIS,
+    MaterialExtractor,
     SceneError,
-    extract_mesh,
-    material_base,
+    geometry_objects,
     object_position,
+    parse_authors,
+    rest_rotation_inverse,
+    rigid_pose,
+    save_bpy_image_png,
 )
 from openrct2_scenery_generator.constants import DOOR_SAMPLE_FRAMES, WALL_ANIMATION_FRAMES
 from openrct2_scenery_generator.loader import build_scenery_group
-from openrct2_x7_renderer.constants import MaterialFlag
 from openrct2_x7_renderer.image import quantize_to_indexed
-from openrct2_x7_renderer.mesh import Material, Mesh, load_texture
+from openrct2_x7_renderer.mesh import Material, Mesh
 from openrct2_x7_renderer.types import IndexedImage
 
-_REGION_MAP = {
-    "NONE": (0, 0),
-    "REMAP1": (MaterialFlag.IS_REMAPPABLE, 1),
-    "REMAP2": (MaterialFlag.IS_REMAPPABLE, 2),
-    "REMAP3": (MaterialFlag.IS_REMAPPABLE, 3),
-    "GREYSCALE": (0, 4),
-    "PEEP": (0, 5),
-    "CHAIN": (0, 6),
-}
 
-
-# Material -> baked Texture map for the current build, populated by
-# build_config_and_meshes before extraction (see bake.bake_materials).
-_baked_textures: dict = {}
-
-
-def _material_from_bpy(bmat) -> Material:
-    m, s = material_base(bmat, prop_attr="vgs_material", region_map=_REGION_MAP)
-    if s is None:
-        return m
-
-    # Wall-only classification.
+def _wall_flags(m: Material, s) -> None:
+    """Wall-only material classification (glass + front/back side)."""
     m.is_glass = bool(s.is_glass)
     if s.wall_side == "FRONT":
         m.is_front = True
     elif s.wall_side == "BACK":
         m.is_back = True
 
-    # Texture sources, in priority order: explicit image > baked procedural nodes.
-    if s.texture is not None:
-        path = bpy.path.abspath(s.texture.filepath_from_user() or s.texture.filepath)
-        if path and os.path.exists(path):
-            m.texture = load_texture(path)
-            m.flags |= MaterialFlag.HAS_TEXTURE
-    if not (m.flags & MaterialFlag.HAS_TEXTURE) and bmat in _baked_textures:
-        m.texture = _baked_textures[bmat]
-        m.flags |= MaterialFlag.HAS_TEXTURE
-    return m
 
-
-def _extract(obj, depsgraph) -> Mesh | None:
-    mesh = extract_mesh(obj, depsgraph, _material_from_bpy)
-    # A per-object "Ghost" toggle marks the whole mesh's geometry as ghost. Tag
-    # its materials so every render path (static, animated, walls, doors, large)
-    # splits these faces into a MeshFlag.GHOST model the renderer traces through.
-    if mesh is not None and obj.vgs_object.is_ghost:
-        for material in mesh.materials:
-            material.is_ghost = True
-    return mesh
-
-
-def _geometry_objects(objects) -> list:
-    """Mesh objects that are part of the model (role != IGNORE)."""
-    return [
-        obj
-        for obj in objects
-        if obj.type == "MESH" and obj.vgs_object.role != "IGNORE"
-    ]
+# Owns this build's baked-texture map + the scene extractor. A per-object "Ghost"
+# toggle marks the whole mesh's geometry as ghost: tagging its materials makes
+# every render path (static, animated, walls, doors, large) split those faces
+# into a MeshFlag.GHOST model the renderer traces through. Refreshed by
+# build_config_and_meshes before extraction.
+_extractor = MaterialExtractor("vgs_material", extra=_wall_flags, ghost_attr="vgs_object")
+_extract = _extractor.extract
 
 
 def _offset_positions(entries: list[dict], offset) -> None:
@@ -210,7 +170,7 @@ def _sample_animation_poses(
             if deforms(obj):
                 deforming.append((obj, idx))
             else:
-                r_rest_inv = obj.evaluated_get(dg).matrix_world.to_3x3().inverted_safe()
+                r_rest_inv = rest_rotation_inverse(obj.evaluated_get(dg).matrix_world)
                 rigid.append((obj, idx, r_rest_inv))
 
         if wm is not None:
@@ -222,21 +182,14 @@ def _sample_animation_poses(
             dg = bpy.context.evaluated_depsgraph_get()
             entries = poses[fi]
             for obj, idx, r_rest_inv in rigid:
-                m_f = obj.evaluated_get(dg).matrix_world
-                p = BASIS @ m_f.to_translation()
-                r_rel = m_f.to_3x3() @ r_rest_inv
-                r_obj = BASIS @ r_rel @ BASIS.transposed()
-                # Renderer applies rotate_y(a) @ rotate_z(b) @ rotate_x(c), which
-                # Blender's "YZX" Euler reconstructs as Ry(e.y) @ Rz(e.z) @ Rx(e.x).
-                e = r_obj.to_euler("YZX")
+                # OBJ-space position + orientation-from-rest (see mesh_extract.rigid_pose).
+                position, orientation = rigid_pose(
+                    obj.evaluated_get(dg).matrix_world, r_rest_inv
+                )
                 entries.append({
                     "mesh_index": idx,
-                    "position": [float(p.x), float(p.y), float(p.z)],
-                    "orientation": [
-                        float(math.degrees(e.y)),
-                        float(math.degrees(e.z)),
-                        float(math.degrees(e.x)),
-                    ],
+                    "position": position,
+                    "orientation": orientation,
                 })
             for obj, rest_idx in deforming:
                 if fi == 0:
@@ -293,12 +246,11 @@ def build_config_and_meshes(
         shared = ss
     depsgraph = context.evaluated_depsgraph_get()
 
-    geo_objs = _geometry_objects(scene.objects if objects is None else objects)
+    geo_objs = geometry_objects(scene.objects if objects is None else objects, "vgs_object")
 
     # Bake any procedural-node materials to textures up front (main thread, Cycles),
-    # then feed them into extraction via _material_from_bpy. Re-assigned each call.
-    global _baked_textures
-    _baked_textures = bake_materials(context, geo_objs, prop_attr="vgs_material")
+    # then feed them into extraction via the extractor. Refreshed each call.
+    _extractor.bake(context, geo_objs)
 
     # A wall is a door OR animated, never both
     small_animated = ss.object_type == "scenery_small" and ss.is_animated
@@ -380,7 +332,7 @@ def build_config_and_meshes(
             for pose in animation["frames"]:
                 _offset_positions(pose, obj_offset)
 
-    authors = [a.strip() for a in shared.authors.split(",") if a.strip()]
+    authors = parse_authors(shared.authors)
 
     # Tagging a material Remap1/2/3 must imply the matching placement colour:
     # otherwise OpenRCT2 shows no colour picker and renders the remap palette
@@ -500,14 +452,8 @@ def _group_preview(ss):
         return None
     with tempfile.TemporaryDirectory(prefix="vgs_icon_") as tmpdir:
         path = os.path.join(tmpdir, "icon.png")
-        img = ss.icon.copy()
-        try:
-            img.file_format = "PNG"
-            img.filepath_raw = path
-            img.save()
-            icon = quantize_to_indexed(path, size=_GROUP_ICON_SIZE)
-        finally:
-            bpy.data.images.remove(img)
+        save_bpy_image_png(ss.icon, path)
+        icon = quantize_to_indexed(path, size=_GROUP_ICON_SIZE)
     # The engine blits the icon at the tab widget's top-left and the
     # object-selection preview at centre - (15, 14): both expect a vanilla
     # ~31x27 tab sprite anchored at offset (0, 0), i.e. with its centre 15 px
@@ -532,7 +478,7 @@ def build_group(context, *, ss=None, shared=None, auto_entries=()):
         ss = context.scene.vgs_scenery
     if shared is None:
         shared = ss
-    authors = [a.strip() for a in shared.authors.split(",") if a.strip()]
+    authors = parse_authors(shared.authors)
     manual = [e.object_id.strip() for e in ss.entries if e.object_id.strip()]
     entries = list(dict.fromkeys([*auto_entries, *manual]))
     config = {

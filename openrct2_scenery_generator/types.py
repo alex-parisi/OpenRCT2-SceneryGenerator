@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from openrct2_x7_renderer.constants import TILE_SIZE
+from openrct2_object_common.identity import ObjectIdentity
 from openrct2_x7_renderer.types import IndexedImage, Model
 
 if TYPE_CHECKING:
@@ -27,15 +27,7 @@ from .constants import (
 
 
 @dataclass
-class SmallScenery:
-    id: str = ""
-    original_id: str = ""
-    name: str = ""
-    authors: list[str] = field(default_factory=list)
-    version: str = "1.0"
-
-    units_per_tile: float = TILE_SIZE
-
+class SmallScenery(ObjectIdentity):
     # Gameplay / placement.
     price: float = 1.0
     removal_price: float = 1.0
@@ -105,15 +97,7 @@ class LargeSceneryTile:
 
 
 @dataclass
-class LargeScenery:
-    id: str = ""
-    original_id: str = ""
-    name: str = ""
-    authors: list[str] = field(default_factory=list)
-    version: str = "1.0"
-
-    units_per_tile: float = TILE_SIZE
-
+class LargeScenery(ObjectIdentity):
     price: float = 1.0
     removal_price: float = 1.0
     cursor: str = DEFAULT_CURSOR
@@ -139,15 +123,7 @@ class LargeScenery:
 
 
 @dataclass
-class Banner:
-    id: str = ""
-    original_id: str = ""
-    name: str = ""
-    authors: list[str] = field(default_factory=list)
-    version: str = "1.0"
-
-    units_per_tile: float = TILE_SIZE
-
+class Banner(ObjectIdentity):
     # Banners have no removal price or cursor
     price: float = 1.0
     scrolling_mode: int = SCROLLING_MODE_NONE
@@ -168,15 +144,7 @@ class Banner:
 
 
 @dataclass
-class PathAddition:
-    id: str = ""
-    original_id: str = ""
-    name: str = ""
-    authors: list[str] = field(default_factory=list)
-    version: str = "1.0"
-
-    units_per_tile: float = TILE_SIZE
-
+class PathAddition(ObjectIdentity):
     price: float = 1.0
     cursor: str = PATH_ADDITION_DEFAULT_CURSOR
     scenery_group: str = ""
@@ -228,15 +196,7 @@ class PathAddition:
 
 
 @dataclass
-class SceneryGroup:
-    id: str = ""
-    original_id: str = ""
-    name: str = ""
-    authors: list[str] = field(default_factory=list)
-    version: str = "1.0"
-
-    units_per_tile: float = TILE_SIZE
-
+class SceneryGroup(ObjectIdentity):
     priority: int = SCENERY_GROUP_DEFAULT_PRIORITY
     entries: list[str] = field(default_factory=list)
 
@@ -245,15 +205,7 @@ class SceneryGroup:
 
 
 @dataclass
-class WallScenery:
-    id: str = ""
-    original_id: str = ""
-    name: str = ""
-    authors: list[str] = field(default_factory=list)
-    version: str = "1.0"
-
-    units_per_tile: float = TILE_SIZE
-
+class WallScenery(ObjectIdentity):
     price: float = 1.0
     cursor: str = WALL_DEFAULT_CURSOR
     height: int = 1  # in wall height units

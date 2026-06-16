@@ -3,19 +3,16 @@ Build object.json and assemble the scenery .parkobj ZIP.
 """
 
 import logging
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from openrct2_object_common.objectjson import object_json_header
-from openrct2_object_common.parkobj import (
-    assemble_parkobj,
-    combine_indexed_images,
-    write_images_dat_lgx,
-)
+from openrct2_object_common.export import ProgressFn, export_object, export_to_directory
+from openrct2_object_common.objectjson import object_json_header_for, object_strings
+from openrct2_object_common.parkobj import write_images_dat_lgx
 from openrct2_object_common.placement import add_model_to_scene
+from openrct2_object_common.preview import open_test_dir, write_combined_preview
 from openrct2_x7_renderer.geometry import combine_model_world
 from openrct2_x7_renderer.image import write_png
 from openrct2_x7_renderer.ray_trace import VIEWS, Context
@@ -45,19 +42,9 @@ from .types import (
 
 log = logging.getLogger(__name__)
 
-Scenery = SmallScenery | LargeScenery | WallScenery | Banner | PathAddition | SceneryGroup
-ProgressFn = Callable[[int, int], None]
-RenderSprites = Callable[[Any, Context, Path, ProgressFn | None], list[str]]
-
 
 def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
-    out = object_json_header(
-        obj.id,
-        object_type="scenery_small",
-        original_id=obj.original_id,
-        version=obj.version,
-        authors=obj.authors,
-    )
+    out = object_json_header_for(obj, "scenery_small")
 
     properties: dict[str, Any] = {
         "price": obj.price,
@@ -87,7 +74,7 @@ def build_small_scenery_json(obj: SmallScenery) -> dict[str, Any]:
         properties["sceneryGroup"] = obj.scenery_group
     out["properties"] = properties
 
-    out["strings"] = {"name": {"en-GB": obj.name}}
+    out["strings"] = object_strings(obj.name)
     return out
 
 
@@ -123,27 +110,6 @@ def _render_sprites(
     return write_images_dat_lgx(images, object_dir)
 
 
-def _export_scenery(
-    obj: Scenery,
-    context: Context,
-    parkobj_path: Path | str,
-    work_dir: Path | str,
-    obj_json: dict[str, Any],
-    render_sprites: RenderSprites,
-    skip_render: bool = False,
-    progress: ProgressFn | None = None,
-) -> None:
-    """Render the sprites (or reuse a previous render) and zip object.json +
-    images.dat into the parkobj."""
-    assemble_parkobj(
-        obj_json,
-        Path(parkobj_path),
-        Path(work_dir),
-        lambda wd: render_sprites(obj, context, wd, progress),
-        skip_render=skip_render,
-    )
-
-
 def export_small_scenery_to(
     obj: SmallScenery,
     context: Context,
@@ -152,21 +118,17 @@ def export_small_scenery_to(
     skip_render: bool = False,
     progress: ProgressFn | None = None,
 ) -> None:
-    _export_scenery(
-        obj, context, parkobj_path, work_dir,
-        build_small_scenery_json(obj), _render_sprites, skip_render, progress,
+    export_object(
+        obj, context, build_small_scenery_json(obj), _render_sprites, parkobj_path, work_dir,
+        skip_render=skip_render, progress=progress,
     )
 
 
 def export_small_scenery(
     obj: SmallScenery, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    export_small_scenery_to(
-        obj,
-        context,
-        Path(output_directory) / f"{obj.id}.parkobj",
-        Path("object"),
-        skip_render=skip_render,
+    export_to_directory(
+        export_small_scenery_to, obj, context, output_directory, obj.id, skip_render=skip_render
     )
 
 
@@ -175,8 +137,7 @@ def export_small_scenery_test(
 ) -> None:
     """Single-viewpoint render per rotation (per pose group) for fast
     iteration."""
-    test_dir = Path(test_dir)
-    test_dir.mkdir(parents=True, exist_ok=True)
+    test_dir = open_test_dir(test_dir)
     anchor = _small_scenery_anchor(obj)
     if obj.is_animated:
         images = render_small_scenery_animated(
@@ -188,7 +149,7 @@ def export_small_scenery_test(
         for g in range(obj.num_pose_groups):
             for d in range(4):
                 write_png(images[4 + g * 4 + d], test_dir / f"pose{g}_{d}.png")
-        write_png(combine_indexed_images(images[:4]), test_dir / "preview_combined.png")
+        write_combined_preview(images[:4], test_dir)
         return
     rotations: list[IndexedImage] = []
     if anchor is not None:
@@ -206,7 +167,7 @@ def export_small_scenery_test(
                     img = ready.render_view(VIEWS[i])
                     write_png(img, test_dir / f"scenery_{i}.png")
                     rotations.append(img)
-    write_png(combine_indexed_images(rotations), test_dir / "preview_combined.png")
+    write_combined_preview(rotations, test_dir)
 
 
 def _tile_centers_xz(obj: LargeScenery) -> NDArray[np.float64]:
@@ -218,13 +179,7 @@ def _tile_centers_xz(obj: LargeScenery) -> NDArray[np.float64]:
 
 
 def build_large_scenery_json(obj: LargeScenery) -> dict[str, Any]:
-    out = object_json_header(
-        obj.id,
-        object_type="scenery_large",
-        original_id=obj.original_id,
-        version=obj.version,
-        authors=obj.authors,
-    )
+    out = object_json_header_for(obj, "scenery_large")
 
     properties: dict[str, Any] = {
         "price": obj.price,
@@ -255,7 +210,7 @@ def build_large_scenery_json(obj: LargeScenery) -> dict[str, Any]:
         properties["sceneryGroup"] = obj.scenery_group
     out["properties"] = properties
 
-    out["strings"] = {"name": {"en-GB": obj.name}}
+    out["strings"] = object_strings(obj.name)
     return out
 
 
@@ -279,21 +234,17 @@ def export_large_scenery_to(
     skip_render: bool = False,
     progress: ProgressFn | None = None,
 ) -> None:
-    _export_scenery(
-        obj, context, parkobj_path, work_dir,
-        build_large_scenery_json(obj), _render_large_sprites, skip_render, progress,
+    export_object(
+        obj, context, build_large_scenery_json(obj), _render_large_sprites, parkobj_path,
+        work_dir, skip_render=skip_render, progress=progress,
     )
 
 
 def export_large_scenery(
     obj: LargeScenery, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    export_large_scenery_to(
-        obj,
-        context,
-        Path(output_directory) / f"{obj.id}.parkobj",
-        Path("object"),
-        skip_render=skip_render,
+    export_to_directory(
+        export_large_scenery_to, obj, context, output_directory, obj.id, skip_render=skip_render
     )
 
 
@@ -301,8 +252,7 @@ def export_large_scenery_test(
     obj: LargeScenery, context: Context, test_dir: Path | str = "test"
 ) -> None:
     """Render the per-tile sprites flat for fast iteration (4 dirs per tile)."""
-    test_dir = Path(test_dir)
-    test_dir.mkdir(parents=True, exist_ok=True)
+    test_dir = open_test_dir(test_dir)
     combined = combine_model_world(obj.meshes, obj.model)
     centers = _tile_centers_xz(obj)
     images = render_large_scenery(context, combined, centers, obj.units_per_tile)
@@ -311,17 +261,11 @@ def export_large_scenery_test(
     for seq in range(obj.num_tiles):
         for d in range(4):
             write_png(images[4 + seq * 4 + d], test_dir / f"tile{seq}_{d}.png")
-    write_png(combine_indexed_images(images[:4]), test_dir / "preview_combined.png")
+    write_combined_preview(images[:4], test_dir)
 
 
 def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
-    out = object_json_header(
-        obj.id,
-        object_type="scenery_wall",
-        original_id=obj.original_id,
-        version=obj.version,
-        authors=obj.authors,
-    )
+    out = object_json_header_for(obj, "scenery_wall")
 
     properties: dict[str, Any] = {
         "price": obj.price,
@@ -377,7 +321,7 @@ def build_wall_scenery_json(obj: WallScenery) -> dict[str, Any]:
         properties["sceneryGroup"] = obj.scenery_group
     out["properties"] = properties
 
-    out["strings"] = {"name": {"en-GB": obj.name}}
+    out["strings"] = object_strings(obj.name)
     return out
 
 
@@ -419,21 +363,17 @@ def export_wall_scenery_to(
     skip_render: bool = False,
     progress: ProgressFn | None = None,
 ) -> None:
-    _export_scenery(
-        obj, context, parkobj_path, work_dir,
-        build_wall_scenery_json(obj), _render_wall_sprites, skip_render, progress,
+    export_object(
+        obj, context, build_wall_scenery_json(obj), _render_wall_sprites, parkobj_path,
+        work_dir, skip_render=skip_render, progress=progress,
     )
 
 
 def export_wall_scenery(
     obj: WallScenery, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    export_wall_scenery_to(
-        obj,
-        context,
-        Path(output_directory) / f"{obj.id}.parkobj",
-        Path("object"),
-        skip_render=skip_render,
+    export_to_directory(
+        export_wall_scenery_to, obj, context, output_directory, obj.id, skip_render=skip_render
     )
 
 
@@ -441,8 +381,7 @@ def export_wall_scenery_test(
     obj: WallScenery, context: Context, test_dir: Path | str = "test"
 ) -> None:
     """Render the wall sprites for fast iteration."""
-    test_dir = Path(test_dir)
-    test_dir.mkdir(parents=True, exist_ok=True)
+    test_dir = open_test_dir(test_dir)
     combined = combine_model_world(obj.meshes, obj.model)
     images = render_wall(
         context,
@@ -454,17 +393,11 @@ def export_wall_scenery_test(
     )
     for i, img in enumerate(images):
         write_png(img, test_dir / f"wall_{i}.png")
-    write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
+    write_combined_preview(images, test_dir)
 
 
 def build_banner_json(obj: Banner) -> dict[str, Any]:
-    out = object_json_header(
-        obj.id,
-        object_type="footpath_banner",
-        original_id=obj.original_id,
-        version=obj.version,
-        authors=obj.authors,
-    )
+    out = object_json_header_for(obj, "footpath_banner")
 
     properties: dict[str, Any] = {"price": obj.price}
     if obj.has_primary_colour:
@@ -477,7 +410,7 @@ def build_banner_json(obj: Banner) -> dict[str, Any]:
         properties["sceneryGroup"] = obj.scenery_group
     out["properties"] = properties
 
-    out["strings"] = {"name": {"en-GB": obj.name}}
+    out["strings"] = object_strings(obj.name)
     return out
 
 
@@ -500,44 +433,33 @@ def export_banner_to(
     skip_render: bool = False,
     progress: ProgressFn | None = None,
 ) -> None:
-    _export_scenery(
-        obj, context, parkobj_path, work_dir,
-        build_banner_json(obj), _render_banner_sprites, skip_render, progress,
+    export_object(
+        obj, context, build_banner_json(obj), _render_banner_sprites, parkobj_path,
+        work_dir, skip_render=skip_render, progress=progress,
     )
 
 
 def export_banner(
     obj: Banner, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    export_banner_to(
-        obj,
-        context,
-        Path(output_directory) / f"{obj.id}.parkobj",
-        Path("object"),
-        skip_render=skip_render,
+    export_to_directory(
+        export_banner_to, obj, context, output_directory, obj.id, skip_render=skip_render
     )
 
 
 def export_banner_test(obj: Banner, context: Context, test_dir: Path | str = "test") -> None:
     """Render the banner sprites for fast iteration (back/front per direction)."""
-    test_dir = Path(test_dir)
-    test_dir.mkdir(parents=True, exist_ok=True)
+    test_dir = open_test_dir(test_dir)
     combined = combine_model_world(obj.meshes, obj.model)
     images = render_banner(context, combined, obj.units_per_tile)
     for d in range(4):
         write_png(images[d * 2], test_dir / f"banner_{d}_back.png")
         write_png(images[d * 2 + 1], test_dir / f"banner_{d}_front.png")
-    write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
+    write_combined_preview(images, test_dir)
 
 
 def build_path_addition_json(obj: PathAddition) -> dict[str, Any]:
-    out = object_json_header(
-        obj.id,
-        object_type="footpath_item",
-        original_id=obj.original_id,
-        version=obj.version,
-        authors=obj.authors,
-    )
+    out = object_json_header_for(obj, "footpath_item")
 
     properties: dict[str, Any] = {
         "renderAs": obj.render_as,
@@ -569,7 +491,7 @@ def build_path_addition_json(obj: PathAddition) -> dict[str, Any]:
         properties["sceneryGroup"] = obj.scenery_group
     out["properties"] = properties
 
-    out["strings"] = {"name": {"en-GB": obj.name}}
+    out["strings"] = object_strings(obj.name)
     return out
 
 
@@ -603,21 +525,17 @@ def export_path_addition_to(
     skip_render: bool = False,
     progress: ProgressFn | None = None,
 ) -> None:
-    _export_scenery(
-        obj, context, parkobj_path, work_dir,
-        build_path_addition_json(obj), _render_path_addition_sprites, skip_render, progress,
+    export_object(
+        obj, context, build_path_addition_json(obj), _render_path_addition_sprites,
+        parkobj_path, work_dir, skip_render=skip_render, progress=progress,
     )
 
 
 def export_path_addition(
     obj: PathAddition, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    export_path_addition_to(
-        obj,
-        context,
-        Path(output_directory) / f"{obj.id}.parkobj",
-        Path("object"),
-        skip_render=skip_render,
+    export_to_directory(
+        export_path_addition_to, obj, context, output_directory, obj.id, skip_render=skip_render
     )
 
 
@@ -625,8 +543,7 @@ def export_path_addition_test(
     obj: PathAddition, context: Context, test_dir: Path | str = "test"
 ) -> None:
     """Render the path-addition sprites for fast iteration."""
-    test_dir = Path(test_dir)
-    test_dir.mkdir(parents=True, exist_ok=True)
+    test_dir = open_test_dir(test_dir)
     normal = combine_model_world(obj.meshes, obj.model)
     broken = combine_model_world(obj.broken_meshes, obj.broken_model) if obj.broken_meshes else None
     full = combine_model_world(obj.full_meshes, obj.full_model) if obj.full_meshes else None
@@ -637,19 +554,13 @@ def export_path_addition_test(
     write_png(images[0], test_dir / "preview.png")
     for i, img in enumerate(images[1:], start=1):
         write_png(img, test_dir / f"item_{i}.png")
-    write_png(combine_indexed_images(images), test_dir / "preview_combined.png")
+    write_combined_preview(images, test_dir)
 
 
 def build_scenery_group_json(obj: SceneryGroup) -> dict[str, Any]:
-    out = object_json_header(
-        obj.id,
-        object_type="scenery_group",
-        original_id=obj.original_id,
-        version=obj.version,
-        authors=obj.authors,
-    )
+    out = object_json_header_for(obj, "scenery_group")
     out["properties"] = {"priority": obj.priority, "entries": list(obj.entries)}
-    out["strings"] = {"name": {"en-GB": obj.name}}
+    out["strings"] = object_strings(obj.name)
     return out
 
 
@@ -676,21 +587,17 @@ def export_scenery_group_to(
     skip_render: bool = False,
     progress: ProgressFn | None = None,
 ) -> None:
-    _export_scenery(
-        obj, context, parkobj_path, work_dir,
-        build_scenery_group_json(obj), _render_scenery_group_sprites, skip_render, progress,
+    export_object(
+        obj, context, build_scenery_group_json(obj), _render_scenery_group_sprites,
+        parkobj_path, work_dir, skip_render=skip_render, progress=progress,
     )
 
 
 def export_scenery_group(
     obj: SceneryGroup, context: Context, output_directory: Path | str, skip_render: bool = False
 ) -> None:
-    export_scenery_group_to(
-        obj,
-        context,
-        Path(output_directory) / f"{obj.id}.parkobj",
-        Path("object"),
-        skip_render=skip_render,
+    export_to_directory(
+        export_scenery_group_to, obj, context, output_directory, obj.id, skip_render=skip_render
     )
 
 
@@ -699,8 +606,7 @@ def export_scenery_group_test(
 ) -> None:
     """Write the tab icon for fast iteration."""
     del context
-    test_dir = Path(test_dir)
-    test_dir.mkdir(parents=True, exist_ok=True)
+    test_dir = open_test_dir(test_dir)
     icon = obj.preview if obj.preview is not None else IndexedImage.blank(1, 1)
     write_png(icon, test_dir / "icon.png")
     write_png(icon, test_dir / "preview_combined.png")

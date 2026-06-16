@@ -7,58 +7,35 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
+from openrct2_object_common.sprite_render import (
+    center_in_box,
+    corner_anchors,
+    render_corner_anchored_rotations,
+    render_scene_view,
+    render_scene_views,
+    trim,
+)
 from openrct2_x7_renderer.constants import TILE_SIZE
 from openrct2_x7_renderer.geometry import (
     assign_faces_to_tiles,
     combine_model_world,
-    split_mesh_by_ghost,
     subset_mesh,
 )
 from openrct2_x7_renderer.mesh import Mesh
 from openrct2_x7_renderer.palette import TRANSPARENT_INDEX
-from openrct2_x7_renderer.ray_trace import VIEWS, Context, FinalizedScene, SceneBuilder
+from openrct2_x7_renderer.ray_trace import VIEWS, Context, FinalizedScene
 from openrct2_x7_renderer.types import IndexedImage, Model
 
 from .constants import DOOR_NUM_IMAGES, DOOR_SAMPLE_FRAMES, WALL_ANIMATION_FRAMES
 
-_IDENTITY3 = np.eye(3, dtype=np.float64)
-
-
-def _add_split_ghost(scene: SceneBuilder, mesh: Mesh, translation: NDArray[np.float64]) -> None:
-    """Add `mesh` to `scene`, splitting ghost faces into their own GHOST model so
-    the renderer traces through them (e.g. baked-in ghost geometry)."""
-    for sub_mesh, mask in split_mesh_by_ghost(mesh):
-        scene.add_model(sub_mesh, _IDENTITY3, translation, mask)
-
-
-def _render_scene_view(
-    context: Context, mesh: Mesh, translation: NDArray[np.float64], view: NDArray[np.float64]
-) -> IndexedImage:
-    """Render a single model under a single view in its own scene."""
-    with context.begin_render() as scene:
-        _add_split_ghost(scene, mesh, translation)
-        with scene.finalize() as ready:
-            return ready.render_view(view)
-
-
-def _render_scene_views(
-    context: Context, mesh: Mesh, translation: NDArray[np.float64], views: list[NDArray[np.float64]]
-) -> list[IndexedImage]:
-    """Render a single model under several views, sharing one finalized scene."""
-    with context.begin_render() as scene:
-        _add_split_ghost(scene, mesh, translation)
-        with scene.finalize() as ready:
-            return [ready.render_view(v) for v in views]
+# Single-model scene rendering and the tile's reference-corner anchor pattern
+# are shared with every other object kind (see openrct2_object_common).
+_render_scene_view = render_scene_view
+_render_scene_views = render_scene_views
 
 # OpenRCT2 anchors large-scenery sprites at the tile's reference CORNER (paint
-# offset {0,0}), not its centre like small scenery ({15,15})
-_HALF_TILE = TILE_SIZE / 2.0
-_CORNER_BY_DIR = [
-    (_HALF_TILE, _HALF_TILE),
-    (-_HALF_TILE, _HALF_TILE),
-    (-_HALF_TILE, -_HALF_TILE),
-    (_HALF_TILE, -_HALF_TILE),
-]
+# offset {0,0}), not its centre like small scenery ({15,15}).
+_CORNER_BY_DIR = corner_anchors(TILE_SIZE)
 
 # Reserved preview/menu image slots that precede the per-tile sprites.
 # OpenRCT2 indexes per-tile sprites as base + 4 + sequence*4 + direction.
@@ -185,14 +162,14 @@ def _composite_over(base: IndexedImage, top: IndexedImage) -> IndexedImage:
         region = canvas[ys : ys + im.height, xs : xs + im.width]
         opaque = im.pixels != TRANSPARENT_INDEX
         region[opaque] = im.pixels[opaque]
-    nz = np.argwhere(canvas != TRANSPARENT_INDEX)
-    (y0, x0), (y1, x1) = nz.min(axis=0), nz.max(axis=0) + 1
-    return IndexedImage(
-        width=int(x1 - x0),
-        height=int(y1 - y0),
-        x_offset=int(left + x0),
-        y_offset=int(top_edge + y0),
-        pixels=canvas[y0:y1, x0:x1].copy(),
+    return trim(
+        IndexedImage(
+            width=right - left,
+            height=bottom - top_edge,
+            x_offset=left,
+            y_offset=top_edge,
+            pixels=canvas,
+        )
     )
 
 
@@ -570,11 +547,9 @@ def render_wall_door(
     return images
 
 
-def _corners_by_dir(units_per_tile: float) -> list[tuple[float, float]]:
-    """Per-direction half-tile corner offsets in OBJ units, scaled to the
-    authored render scale."""
-    h = units_per_tile / 2.0
-    return [(h, h), (-h, h), (-h, -h), (h, -h)]
+# Per-direction half-tile corner offsets, scaled to the authored render scale;
+# shared with every other object kind (see openrct2_object_common).
+_corners_by_dir = corner_anchors
 
 
 def _render_4_rotations(
@@ -585,23 +560,15 @@ def _render_4_rotations(
     corners: list[tuple[float, float]] | None = None,
 ) -> list[IndexedImage]:
     """Render the 4 cardinal rotations of `mesh`, anchoring each direction's
-    world origin at the tile's per-direction corner."""
-    if corners is None:
-        corners = _CORNER_BY_DIR
-    if mesh.faces.shape[0] == 0:
-        return [IndexedImage.blank(1, 1) for _ in range(4)]
-    if len(set(corners)) == 1:
-        # Every direction shares one anchor (e.g. path additions), so one
-        # finalized scene serves all 4 views.
-        ox, oz = corners[0]
-        translation = np.array([-(cx + ox), 0.0, -(cz + oz)], dtype=np.float64)
-        return _render_scene_views(context, mesh, translation, [VIEWS[d] for d in range(4)])
-    out: list[IndexedImage] = []
-    for d in range(4):
-        ox, oz = corners[d]
-        translation = np.array([-(cx + ox), 0.0, -(cz + oz)], dtype=np.float64)
-        out.append(_render_scene_view(context, mesh, translation, VIEWS[d]))
-    return out
+    world origin at the tile's per-direction corner. The corner-anchor pattern
+    (and the single-scene fast path when all corners are equal) is the shared
+    primitive (see openrct2_object_common)."""
+    return render_corner_anchored_rotations(
+        context,
+        mesh,
+        center=(cx, cz),
+        corners=corners if corners is not None else _CORNER_BY_DIR,
+    )
 
 
 def render_large_scenery(
@@ -681,14 +648,7 @@ _PATH_ADDITION_PREVIEW_DRAW = (11, 16)
 def _center_in_button(img: IndexedImage, draw: tuple[int, int]) -> IndexedImage:
     """Re-anchor a preview sprite so its content centers in the scenery-window
     button when the window blits it at the fixed `draw` position."""
-    bx, by = draw
-    return IndexedImage(
-        width=img.width,
-        height=img.height,
-        x_offset=_SCENERY_BUTTON_W // 2 - bx - img.width // 2,
-        y_offset=_SCENERY_BUTTON_H // 2 - by - img.height // 2,
-        pixels=img.pixels,
-    )
+    return center_in_box(img, _SCENERY_BUTTON_W, _SCENERY_BUTTON_H, draw=draw)
 
 
 def count_path_addition_sprites(render_as: str, *, breakable: bool) -> int:

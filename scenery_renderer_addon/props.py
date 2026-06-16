@@ -15,27 +15,15 @@ from bpy.props import (
     StringProperty,
 )
 from bpy.types import Material, Object, PropertyGroup, Scene
-from openrct2_object_common.blender.bake import BAKE_RESOLUTION_ITEMS
 from openrct2_object_common.blender.props import (
-    DEFAULT_DITHER_MODE,
-    DITHER_MODE_ITEMS,
-    SCALE_PRESET_ITEMS,
-    SharedLight,
-    scale_preset_update,
-    simple_items,
+    MATERIAL_REGION_ITEMS_WITH_CHAIN,
+    SharedMaterialSettings,
+    SharedRenderSettings,
+    register_settings,
     title,
+    unregister_settings,
 )
 from openrct2_scenery_generator.constants import DEFAULT_CURSOR, SMALL_SCENERY_SHAPES
-from openrct2_x7_renderer.constants import TILE_SIZE
-
-
-def _title(name: str) -> str:
-    return title(name)
-
-
-def _simple_items(names):
-    return simple_items(names)
-
 
 OBJECT_TYPE_ITEMS = [
     ("scenery_small", "Small Scenery", "Single-tile scenery (1 or 4 rotations)"),
@@ -52,10 +40,6 @@ PATH_ADDITION_RENDER_AS_ITEMS = [
     ("bench", "Bench", "Seat facing the path (gains broken sprites when breakable)"),
     ("fountain", "Fountain", "Jumping fountain base"),
 ]
-
-
-def _scale_preset_update(self, _context):
-    scale_preset_update(self, _context)
 
 
 # Per-material front/back role
@@ -101,18 +85,7 @@ _CURSOR_NAMES = [
     "CURSOR_HAND_OPEN",
     "CURSOR_HAND_CLOSED",
 ]
-CURSOR_ITEMS = [(n, _title(n.removeprefix("CURSOR_")), "") for n in _CURSOR_NAMES]
-
-MATERIAL_REGION_ITEMS = [
-    ("NONE", "None", "Plain shaded colour"),
-    ("REMAP1", "Remap 1 (primary colour)", "Recoloured by the object's primary colour"),
-    ("REMAP2", "Remap 2 (secondary)", "Recoloured by the secondary colour"),
-    ("REMAP3", "Remap 3 (tertiary)", "Recoloured by the tertiary colour"),
-    ("GREYSCALE", "Greyscale", "Greyscale shading region"),
-    ("PEEP", "Peep", "Peep region"),
-    ("CHAIN", "Chain", "Chain region"),
-]
-
+CURSOR_ITEMS = [(n, title(n.removeprefix("CURSOR_")), "") for n in _CURSOR_NAMES]
 
 ANIMATION_CYCLE_ITEMS = [
     ("4", "4 frames", "Short loop"),
@@ -148,81 +121,14 @@ ANIMATION_DEFORM_ITEMS = [
 ]
 
 
-class VGSMaterialSettings(PropertyGroup):
+class VGSMaterialSettings(SharedMaterialSettings):
+    # Shared renderer/baking/Phong fields come from SharedMaterialSettings; the
+    # region enum plus the wall-only glass/side classification are scenery-specific.
     region: EnumProperty(
         name="Region",
         description="How OpenRCT2 treats this material's pixels",
-        items=MATERIAL_REGION_ITEMS,
+        items=MATERIAL_REGION_ITEMS_WITH_CHAIN,
         default="NONE",
-    )
-    is_mask: BoolProperty(name="Mask", default=False)
-    no_ao: BoolProperty(name="No Ambient Occlusion", default=False)
-    edge: BoolProperty(name="Edge AA", default=False)
-    dark_edge: BoolProperty(name="Dark Edge AA", default=False)
-    no_bleed: BoolProperty(name="No Bleed", default=False)
-    texture: PointerProperty(
-        name="Texture",
-        description="Optional image; must be saved to disk (its file is read at export)",
-        type=bpy.types.Image,
-    )
-    bake_procedural: BoolProperty(
-        name="Bake Procedural Nodes",
-        description=(
-            "Bake this material's procedural shader-node graph to a texture at export "
-            "(albedo only). Requires a UV unwrap. Overrides the flat color"
-        ),
-        default=False,
-    )
-    bake_resolution: EnumProperty(
-        name="Bake Resolution",
-        description="Pixel size of the baked texture",
-        items=BAKE_RESOLUTION_ITEMS,
-        default="256",
-    )
-    # Phong shading controls
-    use_color_override: BoolProperty(
-        name="Override Color",
-        description="Use the color below instead of the shader's Base Color",
-        default=False,
-    )
-    diffuse_color: FloatVectorProperty(
-        name="Color",
-        description="Flat diffuse color (used when Override Color is on)",
-        subtype="COLOR",
-        size=3,
-        min=0.0,
-        max=1.0,
-        default=(0.8, 0.8, 0.8),
-    )
-    specular_intensity: FloatProperty(
-        name="Specular Intensity",
-        description="Brightness of the specular highlight (scales the specular color)",
-        default=0.5,
-        min=0.0,
-        soft_max=1.0,
-    )
-    specular_exponent: FloatProperty(
-        name="Specular Exponent",
-        description=(
-            "Phong specular exponent: tightness of the highlight (higher = smaller, sharper)"
-        ),
-        default=50.0,
-        min=1.0,
-        soft_max=256.0,
-    )
-    use_specular_tint: BoolProperty(
-        name="Tint Highlight",
-        description="Tint the specular highlight with the color below (off = white)",
-        default=False,
-    )
-    specular_tint: FloatVectorProperty(
-        name="Specular Tint",
-        description="Specular highlight color (used when Tint Highlight is on)",
-        subtype="COLOR",
-        size=3,
-        min=0.0,
-        max=1.0,
-        default=(1.0, 1.0, 1.0),
     )
     # Wall-only classification
     is_glass: BoolProperty(
@@ -301,58 +207,17 @@ class VGSTile(PropertyGroup):
     )
 
 
-VGSLight = SharedLight
-
-
-class VGSScenerySettings(PropertyGroup):
+class VGSScenerySettings(SharedRenderSettings):
+    # scale_preset / units_per_tile / dither / dither_stability / authors /
+    # version / lights come from SharedRenderSettings.
     # Type & identity
     object_type: EnumProperty(name="Type", items=OBJECT_TYPE_ITEMS, default="scenery_small")
-    scale_preset: EnumProperty(
-        name="Scale",
-        description="How many OBJ units map to one OpenRCT2 tile",
-        items=SCALE_PRESET_ITEMS,
-        default="REALISTIC",
-        update=_scale_preset_update,
-    )
-    units_per_tile: FloatProperty(
-        name="Units / Tile",
-        description=(
-            "OBJ units per OpenRCT2 tile. Drives sprite size and the tile-anchor "
-            "maths for large scenery and walls."
-        ),
-        default=TILE_SIZE,
-        min=0.01,
-        soft_max=16.0,
-    )
-    dither: EnumProperty(
-        name="Dither",
-        description=(
-            "Palette dithering mode. Bayer and Blue noise stay stable across "
-            "animation frames; Floyd-Steinberg has higher fidelity but its pattern "
-            "shifts per frame"
-        ),
-        items=DITHER_MODE_ITEMS,
-        default=DEFAULT_DITHER_MODE,
-    )
-    dither_stability: FloatProperty(
-        name="Dither Stability",
-        description=(
-            "Temporal-stability deadband in palette units. Shading changes smaller "
-            "than this quantise identically between frames, reducing dither "
-            "'swimming' in animations; 0 disables it"
-        ),
-        default=0.0,
-        min=0.0,
-        soft_max=16.0,
-    )
     id: StringProperty(
         name="Object ID",
         description="Unique id, e.g. openrct2sg.scenery_small.my_obj (avoid vanilla ids)",
         default="openrct2sg.scenery_small.my_object",
     )
     name: StringProperty(name="Name", default="My Scenery")
-    authors: StringProperty(name="Authors", description="Comma-separated", default="")
-    version: StringProperty(name="Version", default="1.0")
 
     # Common placement
     price: FloatProperty(name="Price", default=2.0)
@@ -551,15 +416,6 @@ class VGSScenerySettings(PropertyGroup):
         type=bpy.types.Image,
     )
 
-    # Custom lighting
-    lights: CollectionProperty(type=VGSLight)
-    light_index: IntProperty(default=0)
-    show_lights: BoolProperty(
-        name="Custom Lighting",
-        description="Override the default lighting rig with a custom one",
-        default=False,
-    )
-
 
 class VGSBatchEntry(PropertyGroup):
     """One object of a batch export: a Collection plus its own full settings.
@@ -606,11 +462,10 @@ class VGSBatchSettings(PropertyGroup):
     index: IntProperty(default=0)
 
 
-# VGSLight (= SharedLight) is registered cooperatively, NOT in _CLASSES: Blender shares
-# the bundled openrct2_objectcommon wheel across the OpenRCT2 add-ons, so SharedLight is
-# one class object — whichever add-on loads first registers it, the rest must skip it
-# (else "already registered as a subclass 'SharedLight'"). Mirrors the shared parent
-# panel guard in panels.py.
+# SharedLight (the lights rig's item type, carried by SharedRenderSettings) is
+# registered cooperatively (see register_shared_light), NOT in _CLASSES: the
+# bundled wheel is shared across the OpenRCT2 add-ons, so only the first one to
+# load may register the single SharedLight class object.
 _CLASSES = (
     VGSMaterialSettings,
     VGSObjectSettings,
@@ -621,46 +476,18 @@ _CLASSES = (
     VGSBatchSettings,
 )
 
-_shared_light_owned = False
 
-
-def _register_shared_light():
-    """Register SharedLight unless another OpenRCT2 add-on already did.
-
-    Blender shares the bundled wheel, so ``VGSLight`` is the very class object the
-    other add-ons register; ``is_registered`` is the reliable cross-add-on check
-    (the class is not exposed as ``bpy.types.SharedLight``).
-    """
-    global _shared_light_owned
-    if not VGSLight.is_registered:
-        bpy.utils.register_class(VGSLight)
-        _shared_light_owned = True
-
-
-def _unregister_shared_light():
-    """Drop SharedLight only if this add-on was the one that registered it."""
-    global _shared_light_owned
-    if _shared_light_owned:
-        bpy.utils.unregister_class(VGSLight)
-        _shared_light_owned = False
+_POINTERS = (
+    (Scene, "vgs_scenery", VGSScenerySettings),
+    (Scene, "vgs_batch", VGSBatchSettings),
+    (Object, "vgs_object", VGSObjectSettings),
+    (Material, "vgs_material", VGSMaterialSettings),
+)
 
 
 def register():
-    # SharedLight must exist before VGSScenerySettings' CollectionProperty(type=VGSLight).
-    _register_shared_light()
-    for cls in _CLASSES:
-        bpy.utils.register_class(cls)
-    Scene.vgs_scenery = PointerProperty(type=VGSScenerySettings)
-    Scene.vgs_batch = PointerProperty(type=VGSBatchSettings)
-    Object.vgs_object = PointerProperty(type=VGSObjectSettings)
-    Material.vgs_material = PointerProperty(type=VGSMaterialSettings)
+    register_settings(_CLASSES, _POINTERS)
 
 
 def unregister():
-    del Material.vgs_material
-    del Object.vgs_object
-    del Scene.vgs_batch
-    del Scene.vgs_scenery
-    for cls in reversed(_CLASSES):
-        bpy.utils.unregister_class(cls)
-    _unregister_shared_light()
+    unregister_settings(_CLASSES, _POINTERS)

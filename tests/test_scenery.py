@@ -821,3 +821,34 @@ def test_render_banner_and_path_addition_report_progress():
         render_as="bin", breakable=True, progress=lambda i, n: calls.append((i, n)),
     )
     assert calls[-1] == (3, 3)
+
+
+def _topology_mesh(n_faces):
+    """A mesh with ``n_faces`` triangles (n_faces + 2 vertices)."""
+    nv = n_faces + 2
+    return Mesh(
+        vertices=np.zeros((nv, 3), dtype=np.float32),
+        normals=np.zeros((nv, 3), dtype=np.float32),
+        uvs=np.zeros((nv, 2), dtype=np.float32),
+        faces=np.array([[0, 1, 2]] * n_faces, dtype=np.uint32),
+        face_materials=np.zeros(n_faces, dtype=np.uint32),
+        materials=[Material()],
+    )
+
+
+def test_animated_unstable_topology_renders_whole_mesh_per_frame():
+    from openrct2_scenery_generator.sprite_renderer import render_small_scenery_animated
+    from openrct2_x7_renderer.types import MeshFrame, Model
+
+    # Frame 0 has 1 face, frame 1 has 2: differing topology defeats the static/
+    # moving split, so the whole mesh is rendered per frame (the fallback path).
+    meshes = [_topology_mesh(1), _topology_mesh(2)]
+    model = Model(meshes=[[MeshFrame(mesh_index=0), MeshFrame(mesh_index=1)]])
+    calls: list[tuple[int, int]] = []
+    imgs = render_small_scenery_animated(
+        _FakeContext(), meshes, model, 2, progress=lambda a, b: calls.append((a, b))
+    )
+    # base (4 rotations) + a second copy (4) + one extra pose group (4) = 12.
+    assert len(imgs) == 12
+    # Progress fires once per pose group.
+    assert calls == [(1, 2), (2, 2)]

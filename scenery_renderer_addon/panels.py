@@ -2,9 +2,19 @@
 UI panels for the scenery add-on: scene settings (3D View N-panel) +
 per-object role + per-material region."""
 
-import bpy
 from bpy.types import Panel, UIList
-from openrct2_object_common.blender.bake import draw_bake
+from openrct2_object_common.blender.lights_ui import draw_lights_rig, make_lights_uilist
+from openrct2_object_common.blender.object_panel import (
+    draw_dither_box,
+    draw_identity_box,
+    draw_materials_box,
+    draw_render_buttons,
+    draw_scale,
+    make_object_view3d_panel,
+    register_shared_parent,
+    unregister_shared_parent,
+)
+from openrct2_object_common.blender.registration import register_classes, unregister_classes
 from openrct2_scenery_generator.constants import WALL_ANIMATION_FRAMES
 
 from .operators import active_settings
@@ -26,12 +36,7 @@ class VGS_UL_tiles(UIList):
         row.prop(item, "clearance", text="Clr")
 
 
-class VGS_UL_lights(UIList):
-    def draw_item(self, context, layout, data, item, icon, active_data, active_propname):
-        row = layout.row(align=True)
-        row.label(text="", icon="LIGHT")
-        row.prop(item, "type", text="")
-        row.prop(item, "strength", text="")
+VGS_UL_lights = make_lights_uilist("VGS_UL_lights")
 
 
 class VGS_UL_group_entries(UIList):
@@ -61,21 +66,10 @@ class VGS_PT_scenery(Panel):
 
         layout.prop(ss, "object_type")
         if not is_group:
-            layout.prop(ss, "scale_preset")
-            if ss.scale_preset == "CUSTOM":
-                layout.prop(ss, "units_per_tile")
+            draw_scale(layout, ss)
 
-        box = layout.box()
-        box.label(text="Identity", icon="INFO")
-        box.prop(ss, "id")
-        box.prop(ss, "name")
-        box.prop(ss, "authors")
-        box.prop(ss, "version")
-
-        box = layout.box()
-        box.label(text="Dither", icon="MOD_NOISE")
-        box.prop(ss, "dither")
-        box.prop(ss, "dither_stability")
+        draw_identity_box(layout, ss, ("id", "name", "authors", "version"))
+        draw_dither_box(layout, ss)
 
         if is_group:
             _draw_group(layout, ss)
@@ -84,7 +78,7 @@ class VGS_PT_scenery(Panel):
 
         _draw_placement(layout, ss)
         _draw_type_settings(layout, ss)
-        _draw_lights(layout, ss)
+        draw_lights_rig(layout, ss, prefix="vgs", uilist_name="VGS_UL_lights")
         _draw_actions(layout)
 
 
@@ -309,7 +303,7 @@ def _draw_batch(layout, ss, bs):
     col.operator("vgs.batch_remove", icon="REMOVE", text="")
     if not bs.entries:
         box.label(text="Each entry exports one Collection as one .parkobj.", icon="INFO")
-        _draw_lights(layout, ss)
+        draw_lights_rig(layout, ss, prefix="vgs", uilist_name="VGS_UL_lights")
         return
 
     entry = bs.entries[min(bs.index, len(bs.entries) - 1)]
@@ -333,7 +327,7 @@ def _draw_batch(layout, ss, bs):
         _draw_placement(ebox, es, batch=True)
         _draw_type_settings(ebox, es)
 
-    _draw_lights(layout, ss)
+    draw_lights_rig(layout, ss, prefix="vgs", uilist_name="VGS_UL_lights")
 
     col = layout.column(align=True)
     col.scale_y = 1.3
@@ -342,72 +336,22 @@ def _draw_batch(layout, ss, bs):
     col.operator("vgs.export_batch", icon="EXPORT", text=f"Export All ({len(bs.entries)} objects)")
 
 
-def _draw_lights(layout, ss):
-    box = layout.box()
-    row = box.row()
-    row.prop(
-        ss,
-        "show_lights",
-        icon="TRIA_DOWN" if ss.show_lights else "TRIA_RIGHT",
-        emboss=False,
-    )
-    row.label(text="", icon="LIGHT_SUN")
-    if ss.show_lights:
-        row = box.row()
-        row.template_list("VGS_UL_lights", "", ss, "lights", ss, "light_index", rows=3)
-        col = row.column(align=True)
-        col.operator("vgs.light_add", icon="ADD", text="")
-        col.operator("vgs.light_remove", icon="REMOVE", text="")
-        if ss.lights:
-            light = ss.lights[ss.light_index]
-            sub = box.column()
-            sub.prop(light, "type")
-            sub.prop(light, "shadow")
-            sub.prop(light, "direction")
-            sub.prop(light, "strength")
-        else:
-            box.label(text="No lights - using the default rig.", icon="INFO")
-
-
 def _draw_actions(layout):
-    col = layout.column(align=True)
-    col.scale_y = 1.3
-    col.operator("vgs.test_render", icon="RENDER_STILL")
-    col.operator("vgs.export_parkobj", icon="EXPORT")
+    draw_render_buttons(layout, "vgs.test_render", "vgs.export_parkobj")
 
 
-def _draw_material_settings(layout, ms, object_type):
-    """Draw a material's OpenRCT2 region/flags/shading settings."""
-    if object_type == "scenery_wall":
-        col = layout.column(align=True)
-        col.prop(ms, "is_glass")
-        col.prop(ms, "wall_side")
-    elif object_type == "footpath_banner":
-        layout.prop(ms, "wall_side", text="Banner Layer")
-    layout.prop(ms, "region")
-    col = layout.column(align=True)
-    col.prop(ms, "is_mask")
-    col.prop(ms, "no_ao")
-    col.prop(ms, "edge")
-    col.prop(ms, "dark_edge")
-    col.prop(ms, "no_bleed")
-    layout.prop(ms, "texture")
-    draw_bake(layout.column(align=True), ms)
+def _material_preamble(object_type):
+    """Wall/banner classification drawn above a material's region selector."""
 
-    col = layout.column(align=True)
-    col.label(text="Shading")
-    row = col.row(align=True)
-    row.prop(ms, "use_color_override", text="")
-    sub = row.row()
-    sub.enabled = ms.use_color_override
-    sub.prop(ms, "diffuse_color", text="Color")
-    col.prop(ms, "specular_exponent")
-    col.prop(ms, "specular_intensity")
-    row = col.row(align=True)
-    row.prop(ms, "use_specular_tint", text="")
-    sub = row.row()
-    sub.enabled = ms.use_specular_tint
-    sub.prop(ms, "specular_tint", text="Specular Tint")
+    def draw(layout, ms):
+        if object_type == "scenery_wall":
+            col = layout.column(align=True)
+            col.prop(ms, "is_glass")
+            col.prop(ms, "wall_side")
+        elif object_type == "footpath_banner":
+            layout.prop(ms, "wall_side", text="Banner Layer")
+
+    return draw
 
 
 def _draw_object_settings(layout, obj, object_type):
@@ -419,83 +363,18 @@ def _draw_object_settings(layout, obj, object_type):
 
     layout.prop(obj.vgs_object, "is_ghost")
 
-    box = layout.box()
-    box.label(text="Materials", icon="MATERIAL")
-    if not obj.material_slots:
-        box.label(text="No materials on this object.", icon="INFO")
-        return
-    if len(obj.material_slots) > 1:
-        box.template_list(
-            "MATERIAL_UL_matslots",
-            "",
-            obj,
-            "material_slots",
-            obj,
-            "active_material_index",
-            rows=2,
-        )
-    mat = obj.active_material
-    if mat is None:
-        box.label(text="Empty material slot.", icon="INFO")
-    else:
-        _draw_material_settings(box, mat.vgs_material, object_type)
+    draw_materials_box(layout, obj, "vgs_material", preamble=_material_preamble(object_type))
 
 
-# Shared "Selected Object" container
-_SHARED_PARENT_IDNAME = "OPENRCT2_PT_selected_object"
-
-
-class OPENRCT2_PT_selected_object(Panel):
-    bl_idname = _SHARED_PARENT_IDNAME
-    bl_label = "Selected Object"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "OpenRCT2"
-    bl_order = 1
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.object
-        return obj is not None and obj.type == "MESH"
-
-    def draw(self, context):
-        pass
-
-
-def _register_shared_parent():
-    """Register the shared parent unless another add-on already did."""
-    if not hasattr(bpy.types, _SHARED_PARENT_IDNAME):
-        bpy.utils.register_class(OPENRCT2_PT_selected_object)
-
-
-def _unregister_shared_parent():
-    """Drop the shared parent only once no add-on's child still nests under it."""
-    cls = getattr(bpy.types, _SHARED_PARENT_IDNAME, None)
-    if cls is None:
-        return
-    for name in dir(bpy.types):
-        if getattr(getattr(bpy.types, name, None), "bl_parent_id", "") == _SHARED_PARENT_IDNAME:
-            return
-    bpy.utils.unregister_class(cls)
-
-
-class VGS_PT_object_view3d(Panel):
-    """The active object's scenery settings, as a child of "Selected Object"."""
-
-    bl_label = "Scenery"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "OpenRCT2"
-    bl_parent_id = _SHARED_PARENT_IDNAME
-    bl_order = 1
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.object
-        return obj is not None and obj.type == "MESH" and hasattr(obj, "vgs_object")
-
-    def draw(self, context):
-        _draw_object_settings(self.layout, context.object, active_settings(context).object_type)
+VGS_PT_object_view3d = make_object_view3d_panel(
+    name="VGS_PT_object_view3d",
+    label="Scenery",
+    order=1,
+    prop_attr="vgs_object",
+    draw=lambda layout, context: _draw_object_settings(
+        layout, context.object, active_settings(context).object_type
+    ),
+)
 
 
 _CLASSES = (
@@ -509,12 +388,10 @@ _CLASSES = (
 
 
 def register():
-    _register_shared_parent()
-    for cls in _CLASSES:
-        bpy.utils.register_class(cls)
+    register_shared_parent()
+    register_classes(_CLASSES)
 
 
 def unregister():
-    for cls in reversed(_CLASSES):
-        bpy.utils.unregister_class(cls)
-    _unregister_shared_parent()
+    unregister_classes(_CLASSES)
+    unregister_shared_parent()

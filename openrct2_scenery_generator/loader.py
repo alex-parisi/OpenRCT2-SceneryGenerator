@@ -7,7 +7,6 @@ from typing import Any
 
 from openrct2_object_common.config import (
     LoadError,
-    as_array_or_wrap,
     load_meshes,
     load_preview,
     optional_bool,
@@ -16,12 +15,17 @@ from openrct2_object_common.config import (
     optional_string,
     optional_string_list,
     parse_config,
-    read_vector3,
-    require_string,
 )
-from openrct2_x7_renderer.constants import TILE_SIZE
+from openrct2_object_common.loading import (
+    apply_identity,
+    config_dir,
+    load_object,
+    load_single_frame_model,
+    require_choice,
+)
+from openrct2_object_common.loading import object_type_of as _common_object_type_of
 from openrct2_x7_renderer.mesh import Mesh
-from openrct2_x7_renderer.types import IndexedImage, MeshFrame, Model
+from openrct2_x7_renderer.types import IndexedImage, Model
 
 from .constants import (
     DEFAULT_CURSOR,
@@ -45,15 +49,6 @@ from .types import (
     WallScenery,
 )
 
-
-def _load_units_per_tile(root: dict[str, Any]) -> float:
-    """Render scale: OBJ units per tile. Defaults to RCT2's real-world tile."""
-    upt = optional_number(root, "units_per_tile", TILE_SIZE)
-    if upt <= 0.0:
-        raise LoadError('Property "units_per_tile" must be greater than 0')
-    return upt
-
-
 _Identifiable = SmallScenery | LargeScenery | WallScenery | Banner | PathAddition | SceneryGroup
 _Priced = SmallScenery | LargeScenery | WallScenery | PathAddition
 
@@ -63,16 +58,14 @@ def _load_identity(
     root: dict[str, Any],
     preview: IndexedImage | None,
 ) -> None:
-    """Populate the identity + render-scale fields every object kind shares."""
-    obj.id = require_string(root, "id")
-    obj.original_id = optional_string(root, "original_id")
-    obj.name = require_string(root, "name")
-    obj.authors = optional_string_list(root, "authors")
-    v_str = optional_string(root, "version")
-    if v_str:
-        obj.version = v_str
+    """Populate the identity + render-scale fields every object kind shares.
+
+    The id/name/authors/version/units_per_tile parse is shared
+    (:func:`openrct2_object_common.loading.apply_identity`); scenery's
+    preview-fallback policy (a blank 1x1 when none is supplied) stays here.
+    """
+    apply_identity(obj, root)
     obj.preview = preview if preview is not None else IndexedImage.blank(1, 1)
-    obj.units_per_tile = _load_units_per_tile(root)
 
 
 def _load_header(
@@ -90,30 +83,9 @@ def _load_header(
     obj.scenery_group = optional_string(root, "scenery_group")
 
 
-def _load_model(value: Any, num_meshes: int) -> Model:
-    """Parse the single-frame model placement list into a Model."""
-    if value is None:
-        raise LoadError('Property "model" not found')
-    arr = as_array_or_wrap(value)
-    meshes_out: list[list[MeshFrame]] = []
-    for elem in arr:
-        if not isinstance(elem, dict):
-            raise LoadError('Property "model" is not an object')
-
-        mi = elem.get("mesh_index")
-        if not isinstance(mi, int) or isinstance(mi, bool):
-            raise LoadError('Property "mesh_index" not found or is not an integer')
-        if mi >= num_meshes or mi < -1:
-            raise LoadError(f"Mesh index {mi} is out of bounds")
-
-        kwargs: dict[str, Any] = {"mesh_index": int(mi)}
-        for key in ("position", "orientation"):
-            prop = elem.get(key)
-            if prop is not None:
-                kwargs[key] = read_vector3(prop)
-
-        meshes_out.append([MeshFrame(**kwargs)])
-    return Model(meshes=meshes_out)
+# Single-frame placement-list parsing is shared (the door/animation kinds layer
+# on top of it); see openrct2_object_common.loading.
+_load_model = load_single_frame_model
 
 
 def _load_animated_model(frames_value: Any, num_meshes: int) -> Model:
@@ -166,11 +138,12 @@ def build_small_scenery(
     obj.removal_price = optional_number(root, "removal_price", obj.price)
     obj.height = optional_int(root, "height", DEFAULT_HEIGHT)
 
-    obj.shape = optional_string(root, "shape", "4/4")
-    if obj.shape not in SMALL_SCENERY_SHAPES:
-        raise LoadError(
-            f'Unrecognized shape "{obj.shape}" (expected one of {SMALL_SCENERY_SHAPES})'
-        )
+    obj.shape = require_choice(
+        optional_string(root, "shape", "4/4"),
+        SMALL_SCENERY_SHAPES,
+        "shape",
+        expected=SMALL_SCENERY_SHAPES,
+    )
 
     obj.is_rotatable = optional_bool(root, "is_rotatable", True)
     obj.is_stackable = optional_bool(root, "is_stackable", False)
@@ -191,17 +164,14 @@ def build_small_scenery(
     return obj
 
 
-def _config_dir(json_path: Path | str) -> Path:
-    """The directory containing the config file; relative `meshes` / `preview`
-    paths resolve against it (with a CWD fallback for older configs)."""
-    return Path(json_path).parent
+# Relative `meshes` / `preview` paths resolve against the config file's
+# directory; shared with every other object kind (see openrct2_object_common).
+_config_dir = config_dir
 
 
 def load_small_scenery(json_path: Path | str) -> SmallScenery:
     """Parse a config file, load its meshes + preview, build a SmallScenery."""
-    root = parse_config(json_path)
-    base = _config_dir(json_path)
-    return build_small_scenery(root, load_meshes(root, base), load_preview(root, base))
+    return load_object(json_path, build_small_scenery)
 
 
 def _load_tiles(value: Any) -> list[LargeSceneryTile]:
@@ -251,9 +221,7 @@ def build_large_scenery(
 
 
 def load_large_scenery(json_path: Path | str) -> LargeScenery:
-    root = parse_config(json_path)
-    base = _config_dir(json_path)
-    return build_large_scenery(root, load_meshes(root, base), load_preview(root, base))
+    return load_object(json_path, build_large_scenery)
 
 
 def build_wall_scenery(
@@ -321,9 +289,7 @@ def _load_wall_pose_model(anim: Any, num_meshes: int, want_poses: int, kind: str
 
 
 def load_wall_scenery(json_path: Path | str) -> WallScenery:
-    root = parse_config(json_path)
-    base = _config_dir(json_path)
-    return build_wall_scenery(root, load_meshes(root, base), load_preview(root, base))
+    return load_object(json_path, build_wall_scenery)
 
 
 def build_banner(
@@ -345,9 +311,7 @@ def build_banner(
 
 
 def load_banner(json_path: Path | str) -> Banner:
-    root = parse_config(json_path)
-    base = _config_dir(json_path)
-    return build_banner(root, load_meshes(root, base), load_preview(root, base))
+    return load_object(json_path, build_banner)
 
 
 def _load_meshes_for(root: dict[str, Any], key: str, base_dir: Path | None = None) -> list[Mesh]:
@@ -369,12 +333,12 @@ def build_path_addition(
     obj = PathAddition()
     _load_header(obj, root, preview, PATH_ADDITION_DEFAULT_CURSOR)
 
-    obj.render_as = optional_string(root, "render_as", "lamp")
-    if obj.render_as not in PATH_ADDITION_RENDER_TYPES:
-        raise LoadError(
-            f'Unrecognized render_as "{obj.render_as}" (expected one of '
-            f"{PATH_ADDITION_RENDER_TYPES})"
-        )
+    obj.render_as = require_choice(
+        optional_string(root, "render_as", "lamp"),
+        PATH_ADDITION_RENDER_TYPES,
+        "render_as",
+        expected=PATH_ADDITION_RENDER_TYPES,
+    )
 
     obj.is_breakable = optional_bool(root, "is_breakable", False)
     obj.is_jumping_fountain_water = optional_bool(root, "is_jumping_fountain_water", False)
@@ -417,20 +381,19 @@ def build_scenery_group(
 
 
 def load_scenery_group(json_path: Path | str) -> SceneryGroup:
-    root = parse_config(json_path)
-    return build_scenery_group(root, load_preview(root, _config_dir(json_path)))
+    return load_object(json_path, build_scenery_group, with_meshes=False)
+
+
+_OBJECT_TYPES = (
+    "scenery_small",
+    "scenery_large",
+    "scenery_wall",
+    "footpath_banner",
+    "footpath_item",
+    "scenery_group",
+)
 
 
 def object_type_of(config: dict[str, Any]) -> str:
     """Read the scenery object type, defaulting to small scenery."""
-    t = optional_string(config, "object_type", "scenery_small")
-    if t not in (
-        "scenery_small",
-        "scenery_large",
-        "scenery_wall",
-        "footpath_banner",
-        "footpath_item",
-        "scenery_group",
-    ):
-        raise LoadError(f'Unrecognized object_type "{t}"')
-    return t
+    return _common_object_type_of(config, _OBJECT_TYPES, default="scenery_small")

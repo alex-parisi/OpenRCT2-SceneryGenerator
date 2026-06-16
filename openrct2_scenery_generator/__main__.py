@@ -4,14 +4,9 @@ Usage:
     python -m openrct2_scenery_generator [--test|--skip-render] <input.json|.yaml>
 """
 
-import argparse
 import sys
-from collections.abc import Callable
-from pathlib import Path
-from typing import Any, Protocol
 
-from openrct2_object_common.cli import make_context, output_directory_of, run_cli
-from openrct2_x7_renderer.types import Light
+from openrct2_object_common.dispatch import Dispatch, run_dispatch_cli
 
 from .exporter import (
     export_banner,
@@ -37,18 +32,8 @@ from .loader import (
     object_type_of,
 )
 
-
-class _SceneryObject(Protocol):
-    """The common surface the CLI needs from a loaded scenery object."""
-
-    units_per_tile: float
-
-
-_Loader = Callable[[Path], _SceneryObject]
-_Exporter = Callable[..., None]
-
 # object_type -> (load, export, export_test)
-_DISPATCH: dict[str, tuple[_Loader, _Exporter, _Exporter]] = {
+_DISPATCH: Dispatch = {
     "scenery_large": (load_large_scenery, export_large_scenery, export_large_scenery_test),
     "scenery_wall": (load_wall_scenery, export_wall_scenery, export_wall_scenery_test),
     "scenery_small": (load_small_scenery, export_small_scenery, export_small_scenery_test),
@@ -58,18 +43,8 @@ _DISPATCH: dict[str, tuple[_Loader, _Exporter, _Exporter]] = {
 }
 
 
-def _render(args: argparse.Namespace, root: dict[str, Any], lights: list[Light]) -> None:
-    load, export, export_test = _DISPATCH[object_type_of(root)]
-    obj = load(args.input)
-    context = make_context(lights, obj.units_per_tile, args.test, root)
-    if args.test:
-        export_test(obj, context)
-    else:
-        export(obj, context, output_directory_of(root), skip_render=args.skip_render)
-
-
 def main(argv: list[str] | None = None) -> int:
-    return run_cli("openrct2-scenery-generator", argv, _render)
+    return run_dispatch_cli("openrct2-scenery-generator", argv, _DISPATCH, object_type_of)
 
 
 if __name__ == "__main__":
