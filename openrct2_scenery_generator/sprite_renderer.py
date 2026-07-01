@@ -17,9 +17,8 @@ from openrct2_object_common.sprite_render import (
 )
 from openrct2_x7_renderer.constants import TILE_SIZE
 from openrct2_x7_renderer.geometry import (
-    assign_faces_to_tiles,
+    clip_mesh_to_tile,
     combine_model_world,
-    subset_mesh,
 )
 from openrct2_x7_renderer.mesh import Mesh
 from openrct2_x7_renderer.palette import TRANSPARENT_INDEX
@@ -593,11 +592,14 @@ def render_large_scenery(
     if progress is not None:
         progress(1, total)
 
-    # Per-tile sprites, anchored at each tile's per-direction corner.
-    assign = assign_faces_to_tiles(combined, tile_centers_xz)
+    # Per-tile sprites, anchored at each tile's per-direction corner. Triangles
+    # straddling a tile boundary are clipped (not whole-assigned) so continuous
+    # geometry spanning several tiles doesn't leave slivers reaching across
+    # the model.
+    half_tile = units_per_tile / 2.0
     for seq in range(num_tiles):
-        sub = subset_mesh(combined, assign == seq)
         cx, cz = tile_centers_xz[seq]
+        sub = clip_mesh_to_tile(combined, (float(cx), float(cz)), half_tile)
         images.extend(_render_4_rotations(context, sub, float(cx), float(cz), corners))
         if progress is not None:
             progress(seq + 2, total)
